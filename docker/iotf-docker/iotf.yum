@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  mysqldb:
+    image: mysql:8.0
+    container_name: ms8nacos
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: W2316195243
+      MYSQL_DATABASE: nacos_iotf
+      TZ: Asia/Shanghai
+      LANG: C.UTF-8
+    ports:
+      - "43305:3306"                    # 宿主机:容器内部
+    volumes:
+      - mysqldb_data:/var/lib/mysql
+      - ./mysql-schema.sql:/docker-entrypoint-initdb.d/mysql-schema.sql  # 自动初始化
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-pW2316195243"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nacos-network
+
+  nacos:
+    image: nacos/nacos-server:v3.2.0
+    container_name: nacos
+    restart: always
+    depends_on:
+      mysqldb:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "8848:8848"
+      - "9848:9848"
+      - "9849:9849"
+      # 映射规则
+    environment:
+      MODE: standalone
+      SPRING_DATASOURCE_PLATFORM: mysql
+      MYSQL_SERVICE_HOST: mysqldb       # 容器名称（服务发现）
+      MYSQL_SERVICE_PORT: 3306          # ✅ 容器内部端口，不是 43305
+      MYSQL_SERVICE_DB_NAME: nacos_iotf
+      MYSQL_SERVICE_USER: root
+      MYSQL_SERVICE_PASSWORD: W2316195243
+      MYSQL_SERVICE_DB_PARAM: 'useUnicode=true&characterEncoding=utf8&connectTimeout=1000&socketTimeout=3000&autoReconnect=true&useSSL=false&allowPublicKeyRetrieval=true'
+      JVM_XMS: 512m
+      JVM_XMX: 512m
+      JVM_XMN: 256m
+      #NACOS_AUTH_ENABLE: "false"        # 开发环境建议关闭认证
+      #如果一定要开启认证，需要完整的三个配置
+      NACOS_AUTH_TOKEN: "RmFrZSBUb2tlbiBmb3IgRGV2ZWxvcG1lbnQgUHVycG9zZXM="
+      NACOS_AUTH_IDENTITY_KEY: "nacos"
+      NACOS_AUTH_IDENTITY_VALUE: "nacos"
+    volumes:
+      - ./logs:/home/nacos/logs
+    networks:
+      - nacos-network
+
+networks:
+  nacos-network:
+    driver: bridge
+
+volumes:
+  mysqldb_data:
