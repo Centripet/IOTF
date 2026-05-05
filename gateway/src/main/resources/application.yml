@@ -4,10 +4,14 @@ server:
 spring:
   application:
     name: gateway
+
   cloud:
     nacos:
       discovery:
         server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
     gateway:
       server:
         webflux:
@@ -19,8 +23,14 @@ spring:
             - id: test-service-route
               uri: lb://test-service
               predicates:
-                - Path=/api/user/**
+                - Path=/test/api/**
+              filters:
+                - StripPrefix=1
+            - id: auth-service-route
+              uri: lb://auth-service
+              predicates:
+                - Path=/auth/api/**
               filters:
                 - StripPrefix=1
   config:
-    import: nacos:localhost:8848
+    import: nacos:gateway.yaml
