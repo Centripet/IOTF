@@ -1,9 +1,9 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:43305/nacos_iotf?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    url: jdbc:postgresql://localhost:45434/iotf?currentSchema=main
     username: root
     password: W2316195243
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
   data:
@@ -54,3 +54,7 @@ aliyunService:
 
   accessKeySecret:
     []
+
+snowflake:
+  worker-id: 1
+  datacenter-id: 1

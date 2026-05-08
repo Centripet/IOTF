@@ -10,23 +10,23 @@ import java.util.Collections;
 public class CodeGenerator {
     public static void main(String[] args) {
         FastAutoGenerator.create(
-                        "jdbc:mysql://localhost:43307/wufangquancp?useSSL=false&serverTimezone=Asia/Shanghai&characterEncoding=utf8",
+                        "jdbc:postgresql://localhost:45434/iotf?currentSchema=main",
                         "root",
                         "W2316195243"
                 )
                 .globalConfig(builder -> {
                     builder.author("Centripet")
-                            .outputDir(System.getProperty("user.dir") + "/src/main/java/batisGenerator")
+                            .outputDir(System.getProperty("user.dir") + "/common/src/main/java/batisGenerator")
                             .disableOpenDir();
                 })
                 .packageConfig(builder -> {
                     builder.parent("batisGenerator")
                             .pathInfo(Collections.singletonMap(OutputFile.xml,
-                                    System.getProperty("user.dir") + "/src/main/resources/mapper"));
+                                    System.getProperty("user.dir") + "/common/src/main/resources/mapper"));
                 })
                 .strategyConfig(builder -> {
-                    builder.addInclude("w_person")
-                            .addTablePrefix("t_", "tbl_")
+                    builder.addInclude("t_operation_log")
+                            .addTablePrefix("tbl_")
                             .entityBuilder()
                             // 表名 → 转驼峰生成类名
                             .naming(NamingStrategy.underline_to_camel)
