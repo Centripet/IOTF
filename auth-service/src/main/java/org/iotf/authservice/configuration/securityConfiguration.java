@@ -2,7 +2,7 @@ package org.iotf.authservice.configuration;
 
 
 import lombok.RequiredArgsConstructor;
-import org.iotf.authservice.filter.JwtAuthenticationFilter;
+import org.iotf.filter.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;

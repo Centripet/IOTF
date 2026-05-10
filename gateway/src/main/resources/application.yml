@@ -23,14 +23,16 @@ spring:
             - id: test-service-route
               uri: lb://test-service
               predicates:
-                - Path=/test/api/**
+                - Path=/api/test/**
               filters:
-                - StripPrefix=1
+                - PreserveHostHeader
+#                - StripPrefix=1
             - id: auth-service-route
               uri: lb://auth-service
               predicates:
-                - Path=/auth/api/**
+                - Path=/api/auth/**,/api/file/**
               filters:
-                - StripPrefix=1
+                - PreserveHostHeader
+
   config:
     import: nacos:gateway.yaml

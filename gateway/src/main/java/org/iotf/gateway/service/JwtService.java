@@ -1,4 +1,4 @@
-package org.iotf.authservice.service;
+package org.iotf.gateway.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import io.jsonwebtoken.Claims;
@@ -6,9 +6,8 @@ import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
-import org.iotf.entity.auth.JwtPayload;
+import org.iotf.gateway.entity.JwtPayload;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpHeaders;
@@ -128,26 +127,6 @@ public class JwtService {
         return "refresh:" + userId + ":" + clientType;
     }
 
-    public void setTokenForUserId(RedisTemplate<String, String> redisTemplate,
-                                  Long userId,
-                                  String clientType, // 新增：web/app/h5/miniProgram
-                                  String deviceId,   // 新增：设备唯一标识
-                                  String refreshToken,
-                                  String accessToken,
-                                  HttpServletResponse response) {
-
-        Long refreshJti = extractJti(refreshToken);
-
-        redisTemplate.opsForValue().set(generateSessionKey(userId, clientType), String.valueOf(refreshJti), 7, TimeUnit.DAYS);
-
-        response.addHeader("Authorization", "Bearer " + accessToken);
-        ResponseCookie cookie = ResponseCookie.from("refresh_token", refreshToken)
-                .httpOnly(true)
-                .path("/")
-                .maxAge(Duration.ofDays(7))
-                .build();
-        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
-    }
 
     // 根据 user_id 生成 Access Token
     public String generateAccessTokenByUserId(JwtPayload payload) {

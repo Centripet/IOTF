@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.iotf.authservice.service.AliSmsService;
 import org.iotf.authservice.service.ITRolePermissionService;
 import org.iotf.authservice.service.ITUserService;
-import org.iotf.authservice.service.JwtService;
+import org.iotf.service.common.JwtService;
 import org.iotf.entity.auth.JwtPayload;
 import org.iotf.entity.auth.dao.TRolePermission;
 import org.iotf.entity.auth.dao.TUser;
