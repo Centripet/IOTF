@@ -21,7 +21,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - nacos-network
+      - iotf-network
 
   nacos:
     image: nacos/nacos-server:v3.2.0
@@ -56,7 +56,7 @@ services:
     volumes:
       - ./logs:/home/nacos/logs
     networks:
-      - nacos-network
+      - iotf-network
 
   postgres:
     image: postgres:16
@@ -83,11 +83,59 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     restart: unless-stopped
 
+  influxdb:
+    image: influxdb:2.8.0
+    container_name: fluxiotf
+    restart: always
+    ports:
+      - "48086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123456
+      - DOCKER_INFLUXDB_INIT_ORG=iotf
+      - DOCKER_INFLUXDB_INIT_BUCKET=energy
+      - DOCKER_INFLUXDB_INIT_RETENTION=30d
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+      - ./influxdb-config:/etc/influxdb2
+    networks:
+      - iotf-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:4.3.0-management
+    container_name: rmqiotf
+    restart: always
+    ports:
+      - "45672:5672"   # AMQP 协议端口
+      - "15672:15672" # Web 管理界面
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin123456
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - iotf-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
 networks:
-  nacos-network:
+  iotf-network:
     driver: bridge
 
 volumes:
   mysqldb_data:
   postgres-data:
   redis-data:
+  influxdb_data:
+  rabbitmq_data:
+

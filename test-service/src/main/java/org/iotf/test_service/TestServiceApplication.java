@@ -9,7 +9,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 @EnableDiscoveryClient
 @EnableFeignClients
 @SpringBootApplication(scanBasePackages = "org.iotf")
-@MapperScan({"org.iotf.mapper", "org.iotf.authservice.mapper"})
+@MapperScan({"org.iotf.mapper"})
 public class TestServiceApplication {
 
     public static void main(String[] args) {

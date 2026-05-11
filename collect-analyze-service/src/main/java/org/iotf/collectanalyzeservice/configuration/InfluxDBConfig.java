@@ -1,0 +1,25 @@
+package org.iotf.collectanalyzeservice.configuration;
+
+import com.influxdb.client.InfluxDBClient;
+import com.influxdb.client.InfluxDBClientFactory;
+import lombok.Data;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Data
+@Configuration
+@ConfigurationProperties(prefix = "influx")
+public class InfluxDBConfig {
+
+    private String url;
+    private String org;
+    private String bucket;
+    private String token;
+
+    @Bean
+    public InfluxDBClient influxDBClient() {
+
+        return InfluxDBClientFactory.create(url, token.toCharArray(), org, bucket);
+    }
+}

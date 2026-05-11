@@ -1,0 +1,23 @@
+server:
+  port: 46551
+
+spring:
+  application:
+    name: collect-analyze-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+      config:
+        server-addr: 127.0.0.1:8848
+        file-extension: yaml
+
+  config:
+    import: nacos:collect-analyze-service.yaml
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+
