@@ -21,3 +21,9 @@ management:
       exposure:
         include: '*'
 
+emqx:
+  url: tcp://localhost:41883
+  client-id: collect-analyze-service
+  topics: energy/device/+/data
+  qos: 1
+  clean-session: false

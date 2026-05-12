@@ -4,7 +4,7 @@ services:
   mysqldb:
     image: mysql:8.0
     container_name: ms8nacos
-    restart: always
+    restart: unless-stopped
     environment:
       MYSQL_ROOT_PASSWORD: W2316195243
       MYSQL_DATABASE: nacos_iotf
@@ -26,7 +26,7 @@ services:
   nacos:
     image: nacos/nacos-server:v3.2.0
     container_name: nacos
-    restart: always
+    restart: unless-stopped
     depends_on:
       mysqldb:
         condition: service_healthy
@@ -86,7 +86,7 @@ services:
   influxdb:
     image: influxdb:2.8.0
     container_name: fluxiotf
-    restart: always
+    restart: unless-stopped
     ports:
       - "48086:8086"
     environment:
@@ -107,25 +107,24 @@ services:
       timeout: 5s
       retries: 5
 
-  rabbitmq:
-    image: rabbitmq:4.3.0-management
-    container_name: rmqiotf
-    restart: always
+  emqx:
+    image: emqx/emqx:6.2.0
+    container_name: emqxiotf
+    restart: unless-stopped
     ports:
-      - "45672:5672"   # AMQP 协议端口
-      - "15672:15672" # Web 管理界面
+      - "41883:1883"       # MQTT 主要服务端口
+      - "48083:8083"       # WebSocket 端口（Web端调试）
+      - "18083:18083"      # Dashboard 管理界面
     environment:
-      - RABBITMQ_DEFAULT_USER=admin
-      - RABBITMQ_DEFAULT_PASS=admin123456
+      - EMQX_NAME=emqx-iotf
+      - EMQX_HOST=localhost
+      - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
+      - EMQX_DASHBOARD__DEFAULT_PASSWORD=admin123456
     volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
     networks:
       - iotf-network
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
 
 networks:
@@ -137,5 +136,6 @@ volumes:
   postgres-data:
   redis-data:
   influxdb_data:
-  rabbitmq_data:
+  emqx_data:
+  emqx_log:
 
