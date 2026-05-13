@@ -17,7 +17,7 @@ import java.time.Instant;
 public class EnergyDataPoint {
 
     @Column(tag = true)
-    private String deviceId;
+    private String deviceUUID;
 
     @Column(tag = true)
     private String deviceType;

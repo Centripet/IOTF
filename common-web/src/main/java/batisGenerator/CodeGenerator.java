@@ -16,16 +16,16 @@ public class CodeGenerator {
                 )
                 .globalConfig(builder -> {
                     builder.author("Centripet")
-                            .outputDir(System.getProperty("user.dir") + "/common/src/main/java/batisGenerator")
+                            .outputDir(System.getProperty("user.dir") + "/common-web/src/main/java/batisGenerator")
                             .disableOpenDir();
                 })
                 .packageConfig(builder -> {
                     builder.parent("batisGenerator")
                             .pathInfo(Collections.singletonMap(OutputFile.xml,
-                                    System.getProperty("user.dir") + "/common/src/main/resources/mapper"));
+                                    System.getProperty("user.dir") + "/common-web/src/main/resources/mapper"));
                 })
                 .strategyConfig(builder -> {
-                    builder.addInclude("t_operation_log")
+                    builder.addInclude("t_device")
                             .addTablePrefix("tbl_")
                             .entityBuilder()
                             // 表名 → 转驼峰生成类名

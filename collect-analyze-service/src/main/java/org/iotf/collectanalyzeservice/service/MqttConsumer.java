@@ -77,11 +77,11 @@ public class MqttConsumer {
 
                 // 从 Topic 中提取 deviceId
                 // energy/device/DEV001/data → DEV001
-                String deviceId = extractDeviceId(topic);
+                String deviceUUID = extractDeviceId(topic);
 
                 // 构造 InfluxDB 数据点
                 EnergyDataPoint point = EnergyDataPoint.builder()
-                        .deviceId(deviceId)
+                        .deviceUUID(deviceUUID)
                         .deviceType(getStringOrDefault(data, "deviceType", "UNKNOWN"))
                         .current(getDoubleOrDefault(data, "current"))
                         .voltage(getDoubleOrDefault(data, "voltage"))

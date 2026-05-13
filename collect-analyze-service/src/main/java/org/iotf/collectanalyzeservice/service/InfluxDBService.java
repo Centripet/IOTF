@@ -29,7 +29,7 @@ public class InfluxDBService {
     public void writeData(EnergyDataPoint point) {
         WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
         writeApi.writeMeasurement(WritePrecision.MS, point);
-        log.debug("写入能耗数据: deviceId={}, power={}", point.getDeviceId(), point.getPower());
+        log.debug("写入能耗数据: deviceId={}, power={}", point.getDeviceUUID(), point.getPower());
     }
 
     /**
