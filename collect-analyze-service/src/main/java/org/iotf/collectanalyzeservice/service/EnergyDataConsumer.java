@@ -21,9 +21,9 @@ import java.time.Instant;
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-public class MqttConsumer {
+public class EnergyDataConsumer {
 
-    private final InfluxDBService influxDBService;
+    private final EnergyDataService energyDataService;
     private final EmqxConfig emqxConfig;
     private final MqttPahoClientFactory mqttClientFactory;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -92,7 +92,7 @@ public class MqttConsumer {
                         .build();
 
                 // 写入 InfluxDB
-                influxDBService.writeData(point);
+                energyDataService.writeData(point);
 
                 log.info("设备数据已写入 " + point.toString());
 

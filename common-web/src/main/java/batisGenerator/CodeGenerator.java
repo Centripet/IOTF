@@ -25,7 +25,7 @@ public class CodeGenerator {
                                     System.getProperty("user.dir") + "/common-web/src/main/resources/mapper"));
                 })
                 .strategyConfig(builder -> {
-                    builder.addInclude("t_device")
+                    builder.addInclude("t_alarm_log")
                             .addTablePrefix("tbl_")
                             .entityBuilder()
                             // 表名 → 转驼峰生成类名

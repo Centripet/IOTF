@@ -8,7 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.iotf.collectanalyzeservice.controller.requestFormation.fluxQueryRequest;
 import org.iotf.collectanalyzeservice.model.EnergyDataPoint;
-import org.iotf.collectanalyzeservice.service.InfluxDBService;
+import org.iotf.collectanalyzeservice.service.EnergyDataService;
 import org.iotf.wrapper.responseHandle.ApiResponse;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/test")
 public class test {
 
-    private final InfluxDBService influxDBService;
+    private final EnergyDataService energyDataService;
 
     @GetMapping("/health")
     public String health() {
@@ -38,7 +38,7 @@ public class test {
             HttpServletRequest httpRequest,
             HttpServletResponse response
     ) {
-        influxDBService.writeData(point);
+        energyDataService.writeData(point);
         return ApiResponse.success(point);
     }
 
@@ -50,7 +50,7 @@ public class test {
     ) {
 
         return ApiResponse.success(
-                influxDBService.queryDeviceData(request.deviceId(), request.start(), request.end())
+                energyDataService.queryDeviceData(request.deviceId(), request.start(), request.end())
         );
     }
 

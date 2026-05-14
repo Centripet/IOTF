@@ -1,5 +1,6 @@
 package org.iotf.entity.collect_analyze;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.*;
@@ -29,7 +30,7 @@ public class TDevice implements Serializable {
 
     private Long user_id;
 
-    @TableId("device_id")
+    @TableId(value = "device_id", type = IdType.ASSIGN_ID)
     private Long device_id;
 
     private String device_uuid;
