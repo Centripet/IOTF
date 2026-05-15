@@ -5,7 +5,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication(scanBasePackages = "org.iotf")
-@MapperScan({"org.iotf.mapper"})
+@MapperScan({"org.iotf.mapper", "org.iotf.collectanalyzeservice.mapper"})
 public class CollectAnalyzeServiceApplication {
 
     public static void main(String[] args) {

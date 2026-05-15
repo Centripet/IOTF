@@ -1,7 +1,7 @@
-package batisGenerator.service.impl;
+package org.iotf.collectanalyzeservice.service.impl;
 
+import org.iotf.collectanalyzeservice.mapper.TAlarmLogMapper;
 import org.iotf.entity.collect_analyze.TAlarmLog;
-import batisGenerator.mapper.TAlarmLogMapper;
 import org.iotf.collectanalyzeservice.service.ITAlarmLogService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;

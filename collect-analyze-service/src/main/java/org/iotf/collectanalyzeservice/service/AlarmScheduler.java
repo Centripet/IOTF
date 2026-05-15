@@ -26,21 +26,17 @@ public class AlarmScheduler {
     @Scheduled(fixedDelay = 60000)
     public void checkAllDevices() {
         List<TDevice> devices = deviceMapper.selectList(new LambdaQueryWrapper<TDevice>()
-                .select(TDevice::getDevice_id));
-
-        List<Long> device_ids = devices.stream()
-                .map(TDevice::getDevice_id)
-                .toList();
+                .select(TDevice::getDevice_id, TDevice::getDevice_uuid));
         
-        for (Long device_id : device_ids) {
+        for (TDevice device : devices) {
             // 查询 InfluxDB 最近一次数据
             Double latestPower = 0D;
-//                    influxDBService.queryLatestPower(device_id);
+                    influxDBService.queryLatestPower(device.getDevice_uuid());
 
             if (latestPower != null) {
-                double threshold = getThreshold(device_id);  // 从配置获取
-                String deviceName = deviceMapper.selectById(device_id).getDevice_name();
-                alarmService.checkAndHandle(device_id, deviceName, latestPower, threshold);
+                double threshold = getThreshold(device.getDevice_id());  // 从配置获取
+                String deviceName = deviceMapper.selectById(device.getDevice_id()).getDevice_name();
+                alarmService.checkAndHandle(device.getDevice_id(), deviceName, latestPower, threshold);
             }
         }
     }

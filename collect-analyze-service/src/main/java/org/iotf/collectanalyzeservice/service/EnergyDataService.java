@@ -133,4 +133,23 @@ public class EnergyDataService {
         );
     }
 
+    public Double queryLatestPower(String deviceUuid) {
+        String flux = String.format(
+                "from(bucket: \"energy\") " +
+                        "|> range(start: -5m) " +
+                        "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
+                        "|> filter(fn: (r) => r.deviceId == \"%s\") " +
+                        "|> filter(fn: (r) => r._field == \"power\") " +
+                        "|> last()",
+                deviceUuid
+        );
+
+        List<FluxTable> tables = influxDBClient.getQueryApi().query(flux);
+
+        if (!tables.isEmpty() && !tables.get(0).getRecords().isEmpty()) {
+            return (Double) tables.get(0).getRecords().get(0).getValue();
+        }
+        return null;
+    }
+
 }

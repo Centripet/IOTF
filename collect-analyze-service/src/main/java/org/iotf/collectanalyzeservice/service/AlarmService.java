@@ -1,6 +1,5 @@
 package org.iotf.collectanalyzeservice.service;
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,8 +34,12 @@ public class AlarmService {
     /**
      * 检测并处理告警
      */
-    public void checkAndHandle(Long device_id, String device_name,
-                               double currentPower, double threshold) {
+    public void checkAndHandle(
+            Long device_id,
+            String device_name,
+            double currentPower,
+            double threshold
+    ) {
         if (currentPower > threshold) {
             handleOverload(device_id, device_name, currentPower, threshold);
         } else {
@@ -47,8 +50,12 @@ public class AlarmService {
     /**
      * 处理过载告警
      */
-    private void handleOverload(Long device_id, String device_name,
-                                double power, double threshold) {
+    private void handleOverload(
+            Long device_id,
+            String device_name,
+            double power,
+            double threshold
+    ) {
         AlarmContext ctx = activeAlarms.get(device_id);
 
         if (ctx == null || ctx.getStatus().equals("RESOLVED")) {
@@ -120,7 +127,7 @@ public class AlarmService {
     /**
      * 用户确认告警
      */
-    public void acknowledge(Long alarm_id, String user_id) {
+    public void acknowledge(Long alarm_id, Long user_id) {
         alarmMapper.update(
                 new UpdateWrapper<TAlarm>()
                         .eq(TAlarm.ALARM_ID, alarm_id)

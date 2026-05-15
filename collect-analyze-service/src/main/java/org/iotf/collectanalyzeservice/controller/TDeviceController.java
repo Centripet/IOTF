@@ -16,6 +16,7 @@ import org.springframework.stereotype.Controller;
  * <p>
  *  设备管理
  *  功能演示 仅模拟真实设备
+ *  IOT<-VUE->SPRING
  * </p>
  *
  * @author Centripet
@@ -32,6 +33,7 @@ public class TDeviceController {
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
+//submit-mqtt
         return null;
     }
 
@@ -42,6 +44,18 @@ public class TDeviceController {
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
+//submit-mqtt
+        return null;
+    }
+
+    @PostMapping("/reportSwitch")
+    @Operation(summary = "开始/暂停 上报", description = "")
+    public ApiResponse<?> reportSwitch(
+            @Valid @RequestBody reportSwitchRequest request,
+            HttpServletResponse response,
+            @AuthenticationPrincipal JwtPayload payload
+    ) {
+//submit-mqtt
         return null;
     }
 
@@ -52,6 +66,7 @@ public class TDeviceController {
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
+
         return null;
     }
 
@@ -62,6 +77,7 @@ public class TDeviceController {
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
+
         return null;
     }
 
@@ -72,6 +88,7 @@ public class TDeviceController {
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
+//submit-mqtt
         return null;
     }
 
