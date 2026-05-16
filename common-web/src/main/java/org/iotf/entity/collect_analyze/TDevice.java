@@ -53,6 +53,12 @@ public class TDevice implements Serializable {
      */
     private Integer frequency;
 
+    private Boolean report_status;
+
+//    private String alarm_status;
+
+    private Float threshold;
+
     public static final String USER_ID = "user_id";
 
     public static final String DEVICE_ID = "device_id";
@@ -71,6 +77,12 @@ public class TDevice implements Serializable {
 
     public static final String FREQUENCY = "frequency";
 
+    public static final String REPORT_STATUS = "report_status";
+
+//    public static final String ALARM_STATUS = "alarm_status";
+
+    public static final String THRESHOLD = "threshold";
+
     @Override
     public String toString() {
         return "TDevice{" +
@@ -83,6 +95,9 @@ public class TDevice implements Serializable {
         ", device_name = " + device_name +
                 ", deleted = " + deleted +
                 ", frequency = " + frequency +
+                ", report_status = " + report_status +
+//                ", alarm_status = " + alarm_status +
+                ", threshold = " + threshold +
         "}";
     }
 }

@@ -5,6 +5,6 @@ import jakarta.validation.constraints.NotNull;
 
 public record reportSwitchRequest(
         @NotNull @NotBlank Long device_id,
-        Boolean flag
+        @NotNull Boolean report_status
 ) {
 }

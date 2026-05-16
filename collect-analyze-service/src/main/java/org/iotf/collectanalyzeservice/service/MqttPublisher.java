@@ -14,22 +14,27 @@ import org.springframework.stereotype.Component;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-public class MqttAlarmPublisher {
+public class MqttPublisher {
 
     private final MqttPahoClientFactory clientFactory;
     private MqttClient client;
 
     @PostConstruct
     public void init() throws MqttException {
-        client = new MqttClient("tcp://localhost:41883", "alarm-publisher-" + System.currentTimeMillis());
+
+        String brokerUrl = "tcp://localhost:41883";
+        String clientId = "alarm-publisher-" + System.currentTimeMillis();
+
+        client = new MqttClient(brokerUrl, clientId, null);
         client.connect(clientFactory.getConnectionOptions());
+
     }
 
     /**
-     * 推送告警到指定设备对应的用户
+     * backend->userApp
      */
-    public void push(Long device_id, AlarmPush alarm) {
-        String topic = "energy/" + device_id + "/alarm";
+    public void alarmPush(AlarmPush alarm) {
+        String topic = "energy/" + alarm.getDevice_id() + "/alarm";
         String payload = JSON.toJSONString(alarm);
 
         MqttMessage message = new MqttMessage(payload.getBytes());
@@ -38,9 +43,27 @@ public class MqttAlarmPublisher {
 
         try {
             client.publish(topic, message);
-            log.info("告警推送成功: device_id={}, alarmId={}", device_id, alarm.getAlarm_id());
+            log.info("告警推送成功: device_id={}, alarmId={}", alarm.getDevice_id(), alarm.getAlarm_id());
         } catch (MqttException e) {
-            log.error("告警推送失败: device_id={}", device_id, e);
+            log.error("告警推送失败: device_id={}", alarm.getDevice_id(), e);
         }
     }
+    /**
+     * backend->iot
+     */
+    public void commonPush(String topic, Object request) {
+
+        String payload = JSON.toJSONString(request);
+        MqttMessage message = new MqttMessage(payload.getBytes());
+
+        try {
+            client.publish("energy/" + topic, message);
+            log.info("推送成功:{}", request);
+        } catch (MqttException e) {
+            log.error("推送失败:{}", request, e);
+        }
+
+    }
+
+
 }

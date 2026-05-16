@@ -1,155 +1,80 @@
 package org.iotf.collectanalyzeservice.service;
 
-import com.influxdb.client.InfluxDBClient;
-import com.influxdb.client.QueryApi;
-import com.influxdb.client.WriteApiBlocking;
-import com.influxdb.client.domain.WritePrecision;
-import com.influxdb.query.FluxTable;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.iotf.entity.collect_analyze.EnergyDataDTO;
 import org.iotf.collectanalyzeservice.model.EnergyDataPoint;
-import org.springframework.stereotype.Service;
 
-import java.time.Instant;
-import java.time.OffsetDateTime;
+import java.time.LocalDateTime;
 import java.util.List;
 
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class EnergyDataService {
-
-    private final InfluxDBClient influxDBClient;
-
-    // ========== 写入 ==========
+/**
+ * 能耗数据服务接口
+ * 负责设备数据上报、数据处理和存储
+ */
+public interface EnergyDataService {
 
     /**
-     * 写入单个数据点
+     * 处理设备上报的数据
+     * @param data 设备上报的能耗数据
      */
-    public void writeData(EnergyDataPoint point) {
-        WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
-        writeApi.writeMeasurement(WritePrecision.MS, point);
-        log.debug("写入能耗数据: deviceId={}, power={}", point.getDeviceUUID(), point.getPower());
-    }
+    void processReportedData(EnergyDataDTO data);
 
     /**
-     * 批量写入
+     * 将EnergyDataDTO转换为InfluxDB数据点
+     * @param dto 设备上报数据DTO
+     * @return InfluxDB数据点
      */
-    public void writeBatchData(List<EnergyDataPoint> points) {
-        if (points == null || points.isEmpty()) return;
-        WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
-        writeApi.writeMeasurements(WritePrecision.MS, points);
-        log.info("批量写入能耗数据: {} 条", points.size());
-    }
-
-    // ========== 查询 ==========
+    EnergyDataPoint convertToDataPoint(EnergyDataDTO dto);
 
     /**
-     * 查询设备在指定时间范围内的所有数据
+     * 数据滤波处理（简单滑动平均）
+     * @param newVal 新值
+     * @param lastVal 旧值
+     * @return 滤波后的值
      */
-    public List<FluxTable> queryDeviceData(String deviceId, Instant start, Instant end) {
-        String flux = String.format(
-                "from(bucket: \"energy\") " +
-                        "|> range(start: %s, stop: %s) " +
-                        "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
-                        "|> filter(fn: (r) => r.deviceId == \"%s\") " +
-                        "|> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")",
-                start.toString(), end.toString(), deviceId
-        );
-
-        QueryApi queryApi = influxDBClient.getQueryApi();
-        return queryApi.query(flux);
-    }
+    double filterData(double newVal, double lastVal);
 
     /**
-     * 计算设备日总能耗
+     * 数据清洗：去除异常值
+     * @param data 待清洗的数据
+     * @return 清洗后的数据
      */
-    public Double queryDailyEnergy(String deviceId) {
-        String flux = String.format(
-                "from(bucket: \"energy\") " +
-                        "|> range(start: -1d) " +
-                        "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
-                        "|> filter(fn: (r) => r.deviceId == \"%s\") " +
-                        "|> filter(fn: (r) => r._field == \"energy\") " +
-                        "|> sum()",
-                deviceId
-        );
-
-        QueryApi queryApi = influxDBClient.getQueryApi();
-        List<FluxTable> tables = queryApi.query(flux);
-
-        if (!tables.isEmpty() && !tables.get(0).getRecords().isEmpty()) {
-            return (Double) tables.get(0).getRecords().get(0).getValue();
-        }
-        return 0.0;
-    }
+    EnergyDataDTO cleanData(EnergyDataDTO data);
 
     /**
-     * 计算各设备能耗占比
+     * 存储数据到InfluxDB
+     * @param dataPoint InfluxDB数据点
      */
-    public List<FluxTable> queryEnergyRatio() {
-        String flux =
-                "from(bucket: \"energy\") " +
-                        "|> range(start: -1d) " +
-                        "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
-                        "|> filter(fn: (r) => r._field == \"energy\") " +
-                        "|> group(columns: [\"deviceId\"]) " +
-                        "|> sum()";
-
-        return influxDBClient.getQueryApi().query(flux);
-    }
+    void storeToInfluxDB(EnergyDataPoint dataPoint);
 
     /**
-     * 查询设备最近一次数据
+     * 查询设备历史数据
+     * @param deviceUUID 设备UUID
+     * @param startTime 开始时间
+     * @param endTime 结束时间
+     * @return 历史数据列表
      */
-    public List<FluxTable> queryLatestData(String deviceId) {
-        String flux = String.format(
-                "from(bucket: \"energy\") " +
-                        "|> range(start: -10m) " +
-                        "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
-                        "|> filter(fn: (r) => r.deviceId == \"%s\") " +
-                        "|> last() " +
-                        "|> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")",
-                deviceId
-        );
-
-        return influxDBClient.getQueryApi().query(flux);
-    }
+    List<EnergyDataPoint> queryHistoryData(String deviceUUID, LocalDateTime startTime, LocalDateTime endTime);
 
     /**
-     * 删除设备历史数据（保留策略相关）
+     * 统计设备日能耗
+     * @param deviceUUID 设备UUID
+     * @param date 日期
+     * @return 日能耗(Wh)
      */
-    public void deleteDeviceData(String deviceId, OffsetDateTime start, OffsetDateTime stop) {
-        String predicate = String.format(
-                "_measurement=\"device_energy_raw\" AND deviceId=\"%s\"", deviceId
-        );
+    Double calculateDailyEnergy(String deviceUUID, LocalDateTime date);
 
-        influxDBClient.getDeleteApi().delete(
-                start,          // OffsetDateTime
-                stop,           // OffsetDateTime
-                predicate,      // 删除条件
-                "energy",       // bucket
-                "iotf"          // org
-        );
-    }
+    /**
+     * 统计设备周能耗
+     * @param deviceUUID 设备UUID
+     * @param date 日期（所在周）
+     * @return 周能耗(Wh)
+     */
+    Double calculateWeeklyEnergy(String deviceUUID, LocalDateTime date);
 
-    public Double queryLatestPower(String deviceUuid) {
-        String flux = String.format(
-                "from(bucket: \"energy\") " +
-                        "|> range(start: -5m) " +
-                        "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
-                        "|> filter(fn: (r) => r.deviceId == \"%s\") " +
-                        "|> filter(fn: (r) => r._field == \"power\") " +
-                        "|> last()",
-                deviceUuid
-        );
-
-        List<FluxTable> tables = influxDBClient.getQueryApi().query(flux);
-
-        if (!tables.isEmpty() && !tables.get(0).getRecords().isEmpty()) {
-            return (Double) tables.get(0).getRecords().get(0).getValue();
-        }
-        return null;
-    }
-
+    /**
+     * 获取设备实时数据
+     * @param deviceUUID 设备UUID
+     * @return 最新数据点
+     */
+    EnergyDataPoint getRealtimeData(String deviceUUID);
 }

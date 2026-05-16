@@ -1,0 +1,228 @@
+================================================================================
+                        配置修改说明文档
+================================================================================
+
+1. 概述
+-------
+本文档说明为支持新的能耗数据采集与告警服务，需要进行的配置修改。
+
+2. PostgreSQL数据库修改
+------------------------
+
+2.1 设备表(t_device) - 需要添加字段
+-------------------------------------
+现有字段：
+- user_id: BIGINT
+- device_id: BIGINT (主键)
+- device_uuid: VARCHAR(64)
+- device_type: VARCHAR(32)
+- device_name: VARCHAR(64)
+- create_time: TIMESTAMP
+- update_time: TIMESTAMP
+- deleted: INTEGER (0=存在, 1=删除)
+- frequency: INTEGER (上报频率，默认60秒)
+- report_status: BOOLEAN
+- threshold: FLOAT (过载阈值)
+
+建议添加字段：
+- location: VARCHAR(128) - 设备安装位置（如：客厅、卧室、厨房等）
+  ALTER TABLE t_device ADD COLUMN location VARCHAR(128);
+
+2.2 告警表(t_alarm) - 现有结构无需修改
+----------------------------------------
+现有结构已满足需求：
+- alarm_id: BIGINT (主键)
+- device_id: BIGINT
+- device_name: VARCHAR(64)
+- alarm_type: VARCHAR(32) - OVERLOAD/HIGH_ENERGY/ELECTRIC_LEAK/DEVICE_FAULT
+- alarm_level: VARCHAR(32) - NORMAL/WARNING/CRITICAL
+- status: VARCHAR(32) - TRIGGERED/ACKNOWLEDGED/RESOLVED
+- trigger_value: DOUBLE
+- threshold: DOUBLE
+- description: VARCHAR(256)
+- triggered_time: TIMESTAMP
+- acknowledged_time: TIMESTAMP
+- resolved_time: TIMESTAMP
+- acknowledged_by: VARCHAR(64)
+- created_time: TIMESTAMP
+- updated_time: TIMESTAMP
+- device_uuid: VARCHAR(64)
+
+2.3 告警日志表(t_alarm_log) - 现有结构无需修改
+-----------------------------------------------
+现有结构已满足需求。
+
+3. InfluxDB配置
+----------------
+
+3.1 Bucket配置
+---------------
+已配置：bucket = "energy"
+
+3.2 Measurement配置
+-------------------
+使用的measurement名称：
+- device_energy_raw - 原始设备能耗数据
+
+3.3 数据保留策略(Retention Policy)
+-----------------------------------
+建议配置：
+- 原始数据保留：30天
+- 聚合数据保留：1年
+
+3.4 需要创建的实时聚合任务(需手动创建)
+---------------------------------------
+如果需要实时聚合功能，需在InfluxDB中创建以下任务：
+
+// 每分钟聚合
+option task = {name: "energy_minute_agg", every: 1m}
+from(bucket: "energy")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "device_energy_raw")
+  |> aggregateWindow(every: 1m, fn: mean)
+  |> yield(name: "mean")
+
+// 每小时聚合
+option task = {name: "energy_hour_agg", every: 1h}
+from(bucket: "energy")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "device_energy_raw")
+  |> aggregateWindow(every: 1h, fn: mean)
+  |> yield(name: "mean")
+
+// 每日聚合（用于高能耗告警检测）
+option task = {name: "energy_daily_agg", every: 1d}
+from(bucket: "energy")
+  |> range(start: -30d)
+  |> filter(fn: (r) => r._measurement == "device_energy_raw")
+  |> aggregateWindow(every: 1d, fn: sum)
+  |> yield(name: "sum")
+
+4. EMQX/MQTT配置
+-----------------
+
+4.1 连接配置
+------------
+已配置：
+- url: tcp://localhost:41883
+- clientId: collect-analyze-service
+- topics: energy/device/+/data
+- qos: 1
+- cleanSession: false
+
+4.2 需要订阅的主题
+-------------------
+建议订阅以下主题：
+- energy/device/+/data    - 设备能耗数据上报
+- energy/device/+/status   - 设备状态变更
+- energy/device/+/event    - 设备事件上报
+
+4.3 消息格式
+-------------
+支持两种消息格式：
+
+格式1：JSON格式（推荐）
+{
+  "deviceId": "DEV001",
+  "deviceUUID": "device-uuid-xxx",
+  "timestamp": "2024-01-01T12:00:00",
+  "current": 2.5,
+  "voltage": 220.0,
+  "power": 550.0,
+  "energy": 9.17,
+  "isComplete": true,
+  "deviceType": "AIRCON",
+  "location": "客厅",
+  "isOn": true,
+  "isFault": false,
+  "commType": "WIFI",
+  "totalEnergy": 1250.5
+}
+
+格式2：简单格式（兼容C代码）
+ID:DEV001,TIME:1704067200,CURR:2.5,VOLT:220.0,POWER:550.0,ENERGY:9.17
+
+5. Nacos配置修改建议
+--------------------
+
+5.1 EMQX配置扩展
+-----------------
+emqx:
+  url: tcp://localhost:41883
+  clientId: collect-analyze-service
+  topics:
+    - energy/device/+/data
+    - energy/device/+/status
+    - energy/device/+/event
+  qos: 1
+  cleanSession: false
+
+5.2 告警阈值配置
+-----------------
+alarm:
+  threshold:
+    overload: 2000      # 过载阈值(W)
+    high-energy: 500    # 高能耗阈值(Wh/日)
+    current: 10         # 电流阈值(A)
+
+5.3 数据处理配置
+-----------------
+data:
+  filter:
+    enabled: true       # 启用数据滤波
+    new-weight: 0.7     # 新值权重
+    old-weight: 0.3     # 旧值权重
+  cleaning:
+    voltage-min: 200    # 电压最小值(V)
+    voltage-max: 240    # 电压最大值(V)
+    current-max: 30     # 电流最大值(A)
+    power-max: 5000     # 功率最大值(W)
+
+6. 代码配置说明
+---------------
+
+6.1 新增文件
+-------------
+- common-web/src/main/java/org/iotf/entity/collect_analyze/DeviceStatusDTO.java
+- common-web/src/main/java/org/iotf/entity/collect_analyze/EnergyDataDTO.java
+- common-web/src/main/java/org/iotf/entity/collect_analyze/AlarmInfoDTO.java
+- common-web/src/main/java/org/iotf/entity/collect_analyze/UserConfigDTO.java
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/service/IEnergyDataService.java
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/service/impl/EnergyDataServiceImpl.java
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/mqtt/MqttMessageListener.java
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/mqtt/MqttChannelConfig.java
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/constant/AlarmConstants.java
+
+6.2 修改文件
+-------------
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/service/ITAlarmService.java - 扩展接口
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/service/impl/TAlarmServiceImpl.java - 实现告警检测逻辑
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/service/ITDeviceService.java - 添加getDeviceByUUID方法
+- collect-analyze-service2/src/main/java/org/iotf/collectanalyzeservice2/service/impl/TDeviceServiceImpl.java - 实现getDeviceByUUID方法
+
+7. 告警检测逻辑说明
+--------------------
+
+7.1 过载告警(OVERLOAD)
+----------------------
+触发条件：设备开机状态 && 功率 > 过载阈值(默认2000W)
+级别：CRITICAL
+
+7.2 高能耗告警(HIGH_ENERGY)
+---------------------------
+触发条件：设备当日累计能耗 > 高能耗阈值(默认500Wh)
+级别：WARNING
+
+7.3 漏电告警(ELECTRIC_LEAK)
+---------------------------
+触发条件：电流 > 电流阈值(默认10A) && 功率 < 电流 * 电压 * 0.5
+级别：CRITICAL
+
+7.4 设备故障告警(DEVICE_FAULT)
+-----------------------------
+触发条件：设备上报故障状态(isFault=true)
+级别：WARNING
+
+================================================================================
+                          文档结束
+================================================================================

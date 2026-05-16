@@ -3,7 +3,10 @@ package org.iotf.collectanalyzeservice.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.iotf.collectanalyzeservice.service.ITDeviceService;
 import org.iotf.entity.auth.JwtPayload;
+import org.iotf.entity.collect_analyze.TDevice;
 import org.iotf.requestFormation.collect_analyze.*;
 import org.iotf.wrapper.responseHandle.ApiResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,7 +27,10 @@ import org.springframework.stereotype.Controller;
  */
 @Controller
 @RequestMapping("/api/device")
+@RequiredArgsConstructor
 public class TDeviceController {
+
+    private final ITDeviceService deviceService;
 
     @PostMapping("/deviceSubmit")
     @Operation(summary = "注册新设备", description = "")
@@ -34,7 +40,9 @@ public class TDeviceController {
             @AuthenticationPrincipal JwtPayload payload
     ) {
 //submit-mqtt
-        return null;
+
+        return ApiResponse.success(deviceService.deviceSubmit(payload, request));
+
     }
 
     @PostMapping("/reportModify")
@@ -45,7 +53,22 @@ public class TDeviceController {
             @AuthenticationPrincipal JwtPayload payload
     ) {
 //submit-mqtt
-        return null;
+        if (
+                !deviceService.lambdaQuery()
+                        .eq(TDevice::getUser_id, payload.getUser_id())
+                        .eq(TDevice::getDevice_id, request.device_id())
+                        .eq(TDevice::getDeleted, 0)
+                        .exists()
+        ) {
+            return ApiResponse.fail(404, "该设备不存在");
+        }
+
+        if (deviceService.reportModify(payload, request)) {
+            return ApiResponse.success("修改成功");
+        }
+
+        return ApiResponse.error("修改失败");
+
     }
 
     @PostMapping("/reportSwitch")
@@ -56,18 +79,34 @@ public class TDeviceController {
             @AuthenticationPrincipal JwtPayload payload
     ) {
 //submit-mqtt
-        return null;
+        if (
+                !deviceService.lambdaQuery()
+                        .eq(TDevice::getUser_id, payload.getUser_id())
+                        .eq(TDevice::getDevice_id, request.device_id())
+                        .eq(TDevice::getDeleted, 0)
+                        .exists()
+        ) {
+            return ApiResponse.fail(404, "该设备不存在");
+        }
+
+        if (deviceService.reportSwitch(payload, request)) {
+            return ApiResponse.success("修改成功");
+        }
+
+        return ApiResponse.error("修改失败");
+
     }
 
     @PostMapping("/deviceList")
-    @Operation(summary = "设备列表", description = "")
+    @Operation(summary = "设备列表搜索", description = "")
     public ApiResponse<?> deviceList(
             @Valid @RequestBody deviceListRequest request,
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
 
-        return null;
+        return ApiResponse.success(deviceService.deviceList(payload, request));
+
     }
 
     @PostMapping("/deviceDetail")
@@ -77,8 +116,18 @@ public class TDeviceController {
             HttpServletResponse response,
             @AuthenticationPrincipal JwtPayload payload
     ) {
+        if (
+                !deviceService.lambdaQuery()
+                        .eq(TDevice::getUser_id, payload.getUser_id())
+                        .eq(TDevice::getDevice_id, request.device_id())
+                        .eq(TDevice::getDeleted, 0)
+                        .exists()
+        ) {
+            return ApiResponse.fail(404, "该设备不存在");
+        }
 
-        return null;
+        return ApiResponse.success(deviceService.deviceDetail(payload, request));
+
     }
 
     @PostMapping("/deviceDelete")
@@ -89,7 +138,22 @@ public class TDeviceController {
             @AuthenticationPrincipal JwtPayload payload
     ) {
 //submit-mqtt
-        return null;
+        if (
+                !deviceService.lambdaQuery()
+                        .eq(TDevice::getUser_id, payload.getUser_id())
+                        .eq(TDevice::getDevice_id, request.device_id())
+                        .eq(TDevice::getDeleted, 0)
+                        .exists()
+        ) {
+            return ApiResponse.fail(404, "该设备不存在");
+        }
+
+        if (deviceService.deviceDelete(payload, request)) {
+            return ApiResponse.success("删除成功");
+        }
+
+        return ApiResponse.error("删除失败");
+
     }
 
 }
