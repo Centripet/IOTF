@@ -30,14 +30,35 @@ public class MqttMessageListener {
     private static final Pattern TOPIC_PATTERN = Pattern.compile("energy/device/([^/]+)/data");
 
     /**
+     * test:
+     * energy/device/device-001/data
+     *{
+     *   "deviceId": "111",
+     *   "deviceUUID": "device-001",
+     *   "timestamp": "2026-05-18T10:30:00",
+     *   "current": 5.42,
+     *   "voltage": 220.0,
+     *   "power": 1192.4,
+     *   "energy": 19.87,
+     *   "isComplete": true,
+     *   "deviceType": "AIRCON",
+     *   "location": "living-room",
+     *   "isOn": true,
+     *   "isFault": false,
+     *   "commType": "WIFI",
+     *   "totalEnergy": 128.6
+     * }
+     * from(bucket: "energy")
+     *   |> range(start: 0)
+     *   |> filter(fn: (r) => r["_measurement"] == "device_energy_raw")
      * 监听设备数据上报主题
      * @param message MQTT消息
      */
     @ServiceActivator(inputChannel = "mqttInputChannel")
-    public void handleDeviceData(Message<byte[]> message) {
+    public void handleDeviceData(Message<?> message) {
         try {
             String topic = (String) message.getHeaders().get("mqtt_receivedTopic");
-            String payload = new String(message.getPayload(), StandardCharsets.UTF_8);
+            String payload = getPayloadAsString(message.getPayload());
 
             log.debug("收到MQTT消息: topic={}, payload={}", topic, payload);
 
@@ -72,6 +93,16 @@ public class MqttMessageListener {
         } catch (Exception e) {
             log.error("处理MQTT消息失败: {}", e.getMessage(), e);
         }
+    }
+
+    private String getPayloadAsString(Object payload) {
+        if (payload == null) {
+            return null;
+        }
+        if (payload instanceof byte[] bytes) {
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
+        return payload.toString();
     }
 
     /**

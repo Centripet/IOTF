@@ -63,6 +63,8 @@ public class TAlarmLog implements Serializable {
 
     private LocalDateTime update_time;
 
+    public Long user_id;
+
     public static final String ALARM_LOG_ID = "alarm_log_id";
 
     public static final String ALARM_ID = "alarm_id";
@@ -79,6 +81,8 @@ public class TAlarmLog implements Serializable {
 
     public static final String UPDATE_TIME = "update_time";
 
+    public static final String USER_ID = "user_id";
+
     @Override
     public String toString() {
         return "TAlarmLog{" +
@@ -90,6 +94,7 @@ public class TAlarmLog implements Serializable {
         ", changed_time = " + changed_time +
         ", create_time = " + create_time +
         ", update_time = " + update_time +
+                ", user_id = " + user_id +
         "}";
     }
 }

@@ -40,8 +40,12 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
                 .device_name(request.device_name())
                 .device_type(request.device_type())
                 .device_uuid(request.device_UUID())
-                .frequency(request.frequency())
-                .report_status(false)
+//                .frequency(request.frequency())
+//                .report_status(false)
+
+                .overload_threshold(request.overload_threshold())
+                .high_energy_threshold(request.high_energy_threshold())
+                .current_threshold(request.current_threshold())
 
                 .create_time(LocalDateTime.now())
                 .deleted(0)
@@ -75,8 +79,21 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
             updated = true;
         }
 
-        if (request.frequency() != null) {
-            wrapper.set(TDevice.FREQUENCY, request.frequency());
+//        if (request.frequency() != null) {
+//            wrapper.set(TDevice.FREQUENCY, request.frequency());
+//            updated = true;
+//        }
+
+        if (request.overload_threshold() != null) {
+            wrapper.set(TDevice.OVERLOAD_THRESHOLD, request.overload_threshold());
+            updated = true;
+        }
+        if (request.high_energy_threshold() != null) {
+            wrapper.set(TDevice.HIGH_ENERGY_THRESHOLD, request.high_energy_threshold());
+            updated = true;
+        }
+        if (request.current_threshold() != null) {
+            wrapper.set(TDevice.CURRENT_THRESHOLD, request.current_threshold());
             updated = true;
         }
 
@@ -91,21 +108,21 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
         return deviceMapper.update(wrapper) >= 1;
     }
 
-    @Override
-    public Boolean reportSwitch(JwtPayload payload, reportSwitchRequest request) {
-
-        TDevice device = deviceMapper.selectById(request.device_id());
-
-        mqttPublisher.commonPush(device.getDevice_uuid() + "/reportSwitch", request);
-
-        return deviceMapper.update(
-                new UpdateWrapper<TDevice>()
-                        .eq(TDevice.USER_ID, payload.getUser_id())
-                        .eq(TDevice.DEVICE_ID, request.device_id())
-                        .set(TDevice.REPORT_STATUS, request.report_status())
-        ) >= 1;
-
-    }
+//    @Override
+//    public Boolean reportSwitch(JwtPayload payload, reportSwitchRequest request) {
+//
+//        TDevice device = deviceMapper.selectById(request.device_id());
+//
+//        mqttPublisher.commonPush(device.getDevice_uuid() + "/reportSwitch", request);
+//
+//        return deviceMapper.update(
+//                new UpdateWrapper<TDevice>()
+//                        .eq(TDevice.USER_ID, payload.getUser_id())
+//                        .eq(TDevice.DEVICE_ID, request.device_id())
+//                        .set(TDevice.REPORT_STATUS, request.report_status())
+//        ) >= 1;
+//
+//    }
 
     @Override
     public IPage<TDevice> deviceList(JwtPayload payload, deviceListRequest request) {

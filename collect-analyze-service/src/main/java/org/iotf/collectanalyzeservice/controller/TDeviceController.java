@@ -71,31 +71,31 @@ public class TDeviceController {
 
     }
 
-    @PostMapping("/reportSwitch")
-    @Operation(summary = "开始/暂停 上报", description = "")
-    public ApiResponse<?> reportSwitch(
-            @Valid @RequestBody reportSwitchRequest request,
-            HttpServletResponse response,
-            @AuthenticationPrincipal JwtPayload payload
-    ) {
-//submit-mqtt
-        if (
-                !deviceService.lambdaQuery()
-                        .eq(TDevice::getUser_id, payload.getUser_id())
-                        .eq(TDevice::getDevice_id, request.device_id())
-                        .eq(TDevice::getDeleted, 0)
-                        .exists()
-        ) {
-            return ApiResponse.fail(404, "该设备不存在");
-        }
-
-        if (deviceService.reportSwitch(payload, request)) {
-            return ApiResponse.success("修改成功");
-        }
-
-        return ApiResponse.error("修改失败");
-
-    }
+//    @PostMapping("/reportSwitch")
+//    @Operation(summary = "开始/暂停 上报", description = "")
+//    public ApiResponse<?> reportSwitch(
+//            @Valid @RequestBody reportSwitchRequest request,
+//            HttpServletResponse response,
+//            @AuthenticationPrincipal JwtPayload payload
+//    ) {
+////submit-mqtt
+//        if (
+//                !deviceService.lambdaQuery()
+//                        .eq(TDevice::getUser_id, payload.getUser_id())
+//                        .eq(TDevice::getDevice_id, request.device_id())
+//                        .eq(TDevice::getDeleted, 0)
+//                        .exists()
+//        ) {
+//            return ApiResponse.fail(404, "该设备不存在");
+//        }
+//
+//        if (deviceService.reportSwitch(payload, request)) {
+//            return ApiResponse.success("修改成功");
+//        }
+//
+//        return ApiResponse.error("修改失败");
+//
+//    }
 
     @PostMapping("/deviceList")
     @Operation(summary = "设备列表搜索", description = "")

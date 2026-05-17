@@ -1,9 +1,13 @@
 package org.iotf.collectanalyzeservice.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import org.iotf.entity.auth.JwtPayload;
 import org.iotf.entity.collect_analyze.AlarmInfoDTO;
 import org.iotf.entity.collect_analyze.EnergyDataDTO;
 import org.iotf.entity.collect_analyze.TAlarm;
 import com.baomidou.mybatisplus.extension.service.IService;
+import org.iotf.requestFormation.collect_analyze.acknowledgeRequest;
+import org.iotf.requestFormation.collect_analyze.alarmListRequest;
 
 import java.util.List;
 
@@ -62,33 +66,34 @@ public interface ITAlarmService extends IService<TAlarm> {
 
     /**
      * 处理告警（标记为已确认）
-     * @param alarmId 告警ID
-     * @param acknowledgedBy 确认人
      */
-    void acknowledgeAlarm(Long alarmId, String acknowledgedBy);
+    Boolean acknowledgeAlarm(acknowledgeRequest request, JwtPayload payload);
 
     /**
      * 恢复告警（标记为已恢复）
      * @param alarmId 告警ID
      */
-    void resolveAlarm(Long alarmId);
+    void resolveAlarm(Long alarmId, JwtPayload payload);
 
-    /**
-     * 根据设备UUID查询告警列表
-     * @param deviceUUID 设备UUID
-     * @return 告警列表
-     */
-    List<TAlarm> getAlarmsByDeviceUUID(String deviceUUID);
-
-    /**
-     * 查询未处理的告警列表
-     * @return 未处理告警列表
-     */
-    List<TAlarm> getUnHandledAlarms();
+//    /**
+//     * 根据设备UUID查询告警列表
+//     * @param deviceUUID 设备UUID
+//     * @return 告警列表
+//     */
+//    List<TAlarm> getAlarmsByDeviceUUID(String deviceUUID);
+//
+//    /**
+//     * 查询未处理的告警列表
+//     * @return 未处理告警列表
+//     */
+//    List<TAlarm> getUnHandledAlarms();
 
     /**
      * 通知用户告警（多渠道通知）
      * @param alarm 告警信息
      */
     void notifyUser(TAlarm alarm);
+
+    IPage<TAlarm> alarmList(alarmListRequest request, JwtPayload payload);
+
 }

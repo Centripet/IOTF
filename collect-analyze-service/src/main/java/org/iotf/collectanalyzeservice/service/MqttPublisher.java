@@ -7,7 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.iotf.entity.collect_analyze.AlarmPush;
+import org.iotf.entity.collect_analyze.TAlarm;
 import org.springframework.integration.mqtt.core.MqttPahoClientFactory;
 import org.springframework.stereotype.Component;
 
@@ -33,7 +33,23 @@ public class MqttPublisher {
     /**
      * backend->userApp
      */
-    public void alarmPush(AlarmPush alarm) {
+//    public void alarmPush(AlarmPush alarm) {
+//        String topic = "energy/" + alarm.getDevice_id() + "/alarm";
+//        String payload = JSON.toJSONString(alarm);
+//
+//        MqttMessage message = new MqttMessage(payload.getBytes());
+//        message.setQos(1);
+//        message.setRetained(true);  // 保留消息，离线用户上线后补推
+//
+//        try {
+//            client.publish(topic, message);
+//            log.info("告警推送成功: device_id={}, alarmId={}", alarm.getDevice_id(), alarm.getAlarm_id());
+//        } catch (MqttException e) {
+//            log.error("告警推送失败: device_id={}", alarm.getDevice_id(), e);
+//        }
+//    }
+
+    public void alarmPush(TAlarm alarm) {
         String topic = "energy/" + alarm.getDevice_id() + "/alarm";
         String payload = JSON.toJSONString(alarm);
 
@@ -48,6 +64,7 @@ public class MqttPublisher {
             log.error("告警推送失败: device_id={}", alarm.getDevice_id(), e);
         }
     }
+
     /**
      * backend->iot
      */

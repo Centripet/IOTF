@@ -51,13 +51,19 @@ public class TDevice implements Serializable {
     /**
      * 前上报频率 默认60秒 最小10 秒
      */
-    private Integer frequency;
+//    private Integer frequency;
 
-    private Boolean report_status;
+//    private Boolean report_status;
 
 //    private String alarm_status;
 
-    private Float threshold;
+//    private Float threshold;
+
+    private Float overload_threshold;
+
+    private Float high_energy_threshold;
+
+    private Float current_threshold;
 
     public static final String USER_ID = "user_id";
 
@@ -75,13 +81,19 @@ public class TDevice implements Serializable {
 
     public static final String DELETED = "deleted";
 
-    public static final String FREQUENCY = "frequency";
+//    public static final String FREQUENCY = "frequency";
 
-    public static final String REPORT_STATUS = "report_status";
+//    public static final String REPORT_STATUS = "report_status";
 
 //    public static final String ALARM_STATUS = "alarm_status";
 
-    public static final String THRESHOLD = "threshold";
+//    public static final String THRESHOLD = "threshold";
+
+    public static final String OVERLOAD_THRESHOLD = "overload_threshold";
+
+    public static final String HIGH_ENERGY_THRESHOLD = "high_energy_threshold";
+
+    public static final String CURRENT_THRESHOLD = "current_threshold";
 
     @Override
     public String toString() {
@@ -94,10 +106,13 @@ public class TDevice implements Serializable {
         ", update_time = " + update_time +
         ", device_name = " + device_name +
                 ", deleted = " + deleted +
-                ", frequency = " + frequency +
-                ", report_status = " + report_status +
+//                ", frequency = " + frequency +
+//                ", report_status = " + report_status +
 //                ", alarm_status = " + alarm_status +
-                ", threshold = " + threshold +
+//                ", threshold = " + threshold +
+                ", overload_threshold = " + overload_threshold +
+                ", high_energy_threshold = " + high_energy_threshold +
+                ", current_threshold = " + current_threshold +
         "}";
     }
 }

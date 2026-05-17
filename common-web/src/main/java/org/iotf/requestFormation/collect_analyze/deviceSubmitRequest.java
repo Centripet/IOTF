@@ -9,6 +9,9 @@ public record deviceSubmitRequest(
     @NotNull @NotBlank String device_UUID,
     @NotNull @NotBlank String device_type,
     @NotNull @NotBlank String device_name,
-    @Max(9600) @Min(30) Integer frequency
+//    @Max(9600) @Min(30) Integer frequency,
+    Float overload_threshold,
+    Float high_energy_threshold,
+    Float current_threshold
 ) {
 }

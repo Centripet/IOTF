@@ -5,8 +5,8 @@
 //import lombok.extern.slf4j.Slf4j;
 //import org.iotf.collectanalyzeservice.mapper.TAlarmLogMapper;
 //import org.iotf.collectanalyzeservice.mapper.TAlarmMapper;
-//import org.iotf.entity.collect_analyze.AlarmContext;
-//import org.iotf.entity.collect_analyze.AlarmPush;
+//import org.iotf.entity.collect_analyze.noUse.AlarmContext;
+//import org.iotf.entity.collect_analyze.noUse.AlarmPush;
 //import org.iotf.entity.collect_analyze.TAlarm;
 //import org.iotf.entity.collect_analyze.TAlarmLog;
 //import org.springframework.stereotype.Service;

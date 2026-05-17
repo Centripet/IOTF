@@ -92,13 +92,15 @@ public class TAlarm implements Serializable {
     /**
      * 确认人
      */
-    private String acknowledged_by;
+    private Long acknowledged_by;
 
-    private LocalDateTime created_time;
+    private LocalDateTime create_time;
 
-    private LocalDateTime updated_time;
+    private LocalDateTime update_time;
 
     private String device_uuid;
+
+    public Long user_id;
 
     public static final String ALARM_ID = "alarm_id";
 
@@ -126,11 +128,13 @@ public class TAlarm implements Serializable {
 
     public static final String ACKNOWLEDGED_BY = "acknowledged_by";
 
-    public static final String CREATED_TIME = "created_time";
+    public static final String CREATE_TIME = "created_time";
 
-    public static final String UPDATED_TIME = "updated_time";
+    public static final String UPDATE_TIME = "updated_time";
 
     public static final String DEVICE_UUID = "device_uuid";
+
+    public static final String USER_ID = "user_id";
 
     @Override
     public String toString() {
@@ -148,9 +152,10 @@ public class TAlarm implements Serializable {
         ", acknowledged_time = " + acknowledged_time +
         ", resolved_time = " + resolved_time +
         ", acknowledged_by = " + acknowledged_by +
-        ", created_time = " + created_time +
-        ", updated_time = " + updated_time +
+        ", created_time = " + create_time +
+        ", updated_time = " + update_time +
         ", device_uuid = " + device_uuid +
+                ", user_id = " + user_id +
         "}";
     }
 }

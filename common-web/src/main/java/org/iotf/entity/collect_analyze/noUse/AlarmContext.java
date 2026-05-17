@@ -1,4 +1,4 @@
-package org.iotf.entity.collect_analyze;
+package org.iotf.entity.collect_analyze.noUse;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

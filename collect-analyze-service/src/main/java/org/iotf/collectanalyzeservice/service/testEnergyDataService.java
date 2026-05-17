@@ -52,11 +52,11 @@ public class testEnergyDataService {
                 "from(bucket: \"energy\") " +
                         "|> range(start: %s, stop: %s) " +
                         "|> filter(fn: (r) => r._measurement == \"device_energy_raw\") " +
-                        "|> filter(fn: (r) => r.deviceId == \"%s\") " +
+                        "|> filter(fn: (r) => r.deviceUUID == \"%s\") " +
                         "|> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")",
                 start.toString(), end.toString(), deviceId
         );
-
+        System.out.println(flux);
         QueryApi queryApi = influxDBClient.getQueryApi();
         return queryApi.query(flux);
     }

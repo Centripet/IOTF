@@ -20,7 +20,7 @@ public interface ITDeviceService extends IService<TDevice> {
 
     Boolean reportModify(JwtPayload payload, reportModifyRequest request);
 
-    Boolean reportSwitch(JwtPayload payload, reportSwitchRequest request);
+//    Boolean reportSwitch(JwtPayload payload, reportSwitchRequest request);
 
     IPage<TDevice> deviceList(JwtPayload payload, deviceListRequest request);
 

@@ -10,6 +10,9 @@ public record reportModifyRequest(
         @NotBlank String device_UUID,
         @NotBlank String device_type,
         @NotBlank String device_name,
-        @Max(9600) @Min(30) Integer frequency
+//        @Max(9600) @Min(30) Integer frequency,
+        Float overload_threshold,
+        Float high_energy_threshold,
+        Float current_threshold
 ) {
 }

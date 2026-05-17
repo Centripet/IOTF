@@ -18,6 +18,11 @@
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>org.iotf</groupId>
+            <artifactId>common-core</artifactId>
+        </dependency>
+
         <!--common-->
         <dependency>
             <groupId>jakarta.servlet</groupId>
