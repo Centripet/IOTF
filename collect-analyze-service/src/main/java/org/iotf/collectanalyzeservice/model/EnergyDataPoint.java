@@ -76,4 +76,22 @@ public class EnergyDataPoint {
 
     @Column
     private Instant lastUpdateTime; // 新增：设备最后更新时间 - 对应C代码lastUpdate
+
+    /**
+     * device表字段
+     */
+    @Column(tag = true)
+    private Long user_id;
+
+    @Column(tag = true)
+    private Long device_id;
+
+    @Column
+    private String device_type;
+    @Column
+    private String device_name;
+    @Column
+    private String location_pg;
+
+
 }

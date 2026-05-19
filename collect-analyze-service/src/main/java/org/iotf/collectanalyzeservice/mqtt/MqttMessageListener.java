@@ -4,7 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.iotf.collectanalyzeservice.service.EnergyDataService;
+import org.iotf.collectanalyzeservice.service.ITDeviceService;
 import org.iotf.entity.collect_analyze.EnergyDataDTO;
+import org.iotf.entity.collect_analyze.TDevice;
 import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
@@ -25,6 +27,7 @@ public class MqttMessageListener {
 
     private final EnergyDataService energyDataService;
     private final ObjectMapper objectMapper;
+    private final ITDeviceService deviceService;
 
     // MQTT主题正则表达式，用于提取设备UUID
     private static final Pattern TOPIC_PATTERN = Pattern.compile("energy/device/([^/]+)/data");
@@ -87,8 +90,20 @@ public class MqttMessageListener {
                 dataDTO.setTimestamp(LocalDateTime.now());
             }
 
-            // 处理上报数据
-            energyDataService.processReportedData(dataDTO);
+            TDevice device = deviceService.getDeviceByUUID(deviceUUID);
+            if (device != null) {
+                dataDTO.setDevice_id(device.getDevice_id());
+                dataDTO.setUser_id(device.getUser_id());
+                dataDTO.setDevice_type(device.getDevice_type());
+                dataDTO.setDeviceType(device.getDevice_type());
+                dataDTO.setDevice_name(device.getDevice_name());
+                dataDTO.setLocation(device.getLocation());
+                dataDTO.setLocation_pg(device.getLocation());
+                // 处理上报数据
+                energyDataService.processReportedData(dataDTO);
+            } else {
+                log.warn("Device metadata not found, skip reported data: deviceUUID={}", deviceUUID);
+            }
 
         } catch (Exception e) {
             log.error("处理MQTT消息失败: {}", e.getMessage(), e);

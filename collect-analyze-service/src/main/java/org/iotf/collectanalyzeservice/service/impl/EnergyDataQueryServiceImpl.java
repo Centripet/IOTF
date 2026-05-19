@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.iotf.collectanalyzeservice.model.EnergyDataPoint;
 import org.iotf.collectanalyzeservice.service.EnergyDataQueryService;
+import org.iotf.entity.collect_analyze.EnergyAggDTO;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -29,6 +30,9 @@ public class EnergyDataQueryServiceImpl implements EnergyDataQueryService {
 
     @Value("${influx.bucket}")
     private String bucket;
+
+    @Value("${influx.agg-bucket:energy_agg}")
+    private String aggBucket;
 
     @Override
     public List<EnergyDataPoint> queryHistoryData(String deviceUUID, LocalDateTime startTime, LocalDateTime endTime) {
@@ -104,6 +108,144 @@ public class EnergyDataQueryServiceImpl implements EnergyDataQueryService {
                 .orElse(null);
     }
 
+    @Override
+    public EnergyAggDTO queryLatestDeviceAgg(Long userId, Long deviceId, String period) {
+        return queryAgg(userId, deviceId, period, true, 1, 1, true).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Override
+    public EnergyAggDTO queryLatestUserAgg(Long userId, String period) {
+        return queryAgg(userId, null, period, false, 1, 1, true).stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Override
+    public List<EnergyAggDTO> queryDeviceAggPage(Long userId, Long deviceId, String period, Integer page, Integer size) {
+        return queryAgg(userId, deviceId, period, true, page, size, false);
+    }
+
+    @Override
+    public List<EnergyAggDTO> queryUserAggPage(Long userId, String period, Integer page, Integer size) {
+        return queryAgg(userId, null, period, false, page, size, false);
+    }
+
+    @Override
+    public Long queryDeviceAggCount(Long userId, Long deviceId, String period) {
+        return queryAggCount(userId, deviceId, period, true);
+    }
+
+    @Override
+    public Long queryUserAggCount(Long userId, String period) {
+        return queryAggCount(userId, null, period, false);
+    }
+
+    private List<EnergyAggDTO> queryAgg(Long userId, Long deviceId, String period, boolean byDevice,
+                                        Integer page, Integer size, boolean latestOnly) {
+        String measurement = resolveAggMeasurement(period, byDevice);
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safeSize = size == null || size < 1 ? 10 : size;
+        int offset = latestOnly ? 0 : (safePage - 1) * safeSize;
+
+        StringBuilder query = new StringBuilder();
+        query.append(String.format("""
+                from(bucket: "%s")
+                  |> range(start: 0)
+                  |> filter(fn: (r) => r["_measurement"] == "%s")
+                """, aggBucket, measurement, userId));
+
+        if (byDevice) {
+            query.append(String.format("  |> filter(fn: (r) => r[\"device_id\"] == \"%s\")%n", deviceId));
+        } else {
+            query.append(String.format("  |> filter(fn: (r) => r[\"user_id\"] == \"%s\")%n", userId));
+        }
+
+        query.append("""
+                  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+                """);
+
+        if (latestOnly) {
+            query.append("  |> sort(columns: [\"_time\"], desc: true)\n");
+        } else {
+            query.append("  |> sort(columns: [\"_time\"], desc: false)\n");
+        }
+
+        query.append(String.format("  |> limit(n: %d, offset: %d)%n", latestOnly ? 1 : safeSize, offset));
+
+        List<EnergyAggDTO> result = new ArrayList<>();
+        try {
+            List<FluxTable> tables = influxDBClient.getQueryApi().query(query.toString());
+            for (FluxTable table : tables) {
+                for (FluxRecord record : table.getRecords()) {
+                    result.add(toEnergyAggDTO(record, period));
+                }
+            }
+        } catch (Exception e) {
+            log.error("Query energy aggregate failed: {}", e.getMessage(), e);
+        }
+
+        return result;
+    }
+
+    private Long queryAggCount(Long userId, Long deviceId, String period, boolean byDevice) {
+        String measurement = resolveAggMeasurement(period, byDevice);
+
+        StringBuilder query = new StringBuilder();
+        query.append(String.format("""
+                from(bucket: "%s")
+                  |> range(start: 0)
+                  |> filter(fn: (r) => r["_measurement"] == "%s")
+                """, aggBucket, measurement));
+
+        if (byDevice) {
+            query.append(String.format("  |> filter(fn: (r) => r[\"device_id\"] == \"%s\")%n", deviceId));
+        } else {
+            query.append(String.format("  |> filter(fn: (r) => r[\"user_id\"] == \"%s\")%n", userId));
+        }
+
+        query.append("""
+                  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+                  |> count()
+                """);
+
+        try {
+            List<FluxTable> tables = influxDBClient.getQueryApi().query(query.toString());
+            for (FluxTable table : tables) {
+                for (FluxRecord record : table.getRecords()) {
+                    Object countVal = record.getValueByKey("energy_sum_wh");
+                    if (countVal instanceof Number) {
+                        return ((Number) countVal).longValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Query energy aggregate count failed: {}", e.getMessage(), e);
+        }
+
+        return 0L;
+    }
+
+    private EnergyAggDTO toEnergyAggDTO(FluxRecord record, String period) {
+        Map<String, Object> values = record.getValues();
+        return EnergyAggDTO.builder()
+                .time(record.getTime())
+                .period(period)
+                .user_id(getLongValue(values.get("user_id")))
+                .device_id(getLongValue(values.get("device_id")))
+                .energy_sum_wh(getDoubleValue(values.get("energy_sum_wh")))
+                .power_avg_w(getDoubleValue(values.get("power_avg_w")))
+                .power_max_w(getDoubleValue(values.get("power_max_w")))
+                .sample_count(getLongValue(values.get("sample_count")))
+                .build();
+    }
+
+    private String resolveAggMeasurement(String period, boolean byDevice) {
+        String suffix = period == null ? "" : period.trim().toLowerCase(Locale.ROOT);
+        return (byDevice ? "device_energy_" : "user_energy_") + suffix;
+    }
+
     private Double getDoubleValue(Object value) {
         if (value == null) {
             return null;
@@ -113,6 +255,20 @@ public class EnergyDataQueryServiceImpl implements EnergyDataQueryService {
         }
         try {
             return Double.parseDouble(value.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private Long getLongValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        try {
+            return Long.parseLong(value.toString());
         } catch (NumberFormatException e) {
             return null;
         }

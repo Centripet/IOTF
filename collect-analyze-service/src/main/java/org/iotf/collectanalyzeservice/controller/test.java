@@ -13,7 +13,7 @@ import org.iotf.wrapper.responseHandle.ApiResponse;
 import org.springframework.web.bind.annotation.*;
 
 @Slf4j
-@Tag(name = "登录验证", description = "登录注册鉴权等相关接口")
+@Tag(name = "TEST", description = "")
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/test")

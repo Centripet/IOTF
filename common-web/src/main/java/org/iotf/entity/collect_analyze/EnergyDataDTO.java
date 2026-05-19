@@ -87,4 +87,13 @@ public class EnergyDataDTO {
      * 累计用电量(Wh)
      */
     private Double totalEnergy;
+
+    /**
+     * device表字段
+     */
+    private Long user_id;
+    private Long device_id;
+    private String device_type;
+    private String device_name;
+    private String location_pg;
 }

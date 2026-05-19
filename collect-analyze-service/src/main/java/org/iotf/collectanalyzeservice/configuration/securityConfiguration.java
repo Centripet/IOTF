@@ -42,7 +42,8 @@ public class securityConfiguration {
                                 "/swagger-resources/**",
                                 "/api/auth/**",
                                 "/api/about/**",
-                                "/api/test/*"
+                                "/api/test/*",
+                                "/api/influx/*"
                         ).permitAll()
                         .anyRequest().authenticated()
                 ).addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

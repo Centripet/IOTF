@@ -1,0 +1,15 @@
+[
+  {
+    "apiVersion": "influxdata.com/v2alpha1",
+    "kind": "Task",
+    "metadata": {
+      "name": "iotf-device-energy-daily"
+    },
+    "spec": {
+      "every": "1d0s",
+      "name": "iotf_device_energy_daily",
+      "query": "sourceBucket = \"energy_agg\"\ntargetBucket = \"energy_agg\"\n\nbase = (field) =>\n  from(bucket: sourceBucket)\n    |> range(start: -2d)\n    |> filter(fn: (r) => r._measurement == \"device_energy_hourly\")\n    |> filter(fn: (r) => r._field == field)\n    |> filter(fn: (r) => exists r.user_id and exists r.device_id)\n    |> group(columns: [\"device_id\"])\n\nenergy =\n  base(field: \"energy_sum_wh\")\n    |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n    |> set(key: \"_measurement\", value: \"device_energy_daily\")\n\npowerAvg =\n  base(field: \"power_avg_w\")\n    |> aggregateWindow(every: 1d, fn: mean, createEmpty: false)\n    |> set(key: \"_measurement\", value: \"device_energy_daily\")\n\npowerMax =\n  base(field: \"power_max_w\")\n    |> aggregateWindow(every: 1d, fn: max, createEmpty: false)\n    |> set(key: \"_measurement\", value: \"device_energy_daily\")\n\nsampleCount =\n  base(field: \"sample_count\")\n    |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n    |> set(key: \"_measurement\", value: \"device_energy_daily\")\n\nunion(tables: [energy, powerAvg, powerMax, sampleCount])\n  |> to(bucket: targetBucket)",
+      "offset": "10m0s"
+    }
+  }
+]

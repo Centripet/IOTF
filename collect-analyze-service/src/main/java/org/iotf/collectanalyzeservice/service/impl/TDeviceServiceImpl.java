@@ -12,6 +12,9 @@ import org.iotf.collectanalyzeservice.mapper.TDeviceMapper;
 import org.iotf.collectanalyzeservice.service.ITDeviceService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.iotf.requestFormation.collect_analyze.*;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -31,6 +34,7 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
 
     private final TDeviceMapper deviceMapper;
     private final MqttPublisher mqttPublisher;
+    private final CacheManager cacheManager;
 
     @Override
     public TDevice deviceSubmit(JwtPayload payload, deviceSubmitRequest request) {
@@ -52,6 +56,7 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
                 .build();
 
         mqttPublisher.commonPush(request.device_UUID() + "/deviceSubmit", request);
+        evictDeviceCache(request.device_UUID());
 
         return device;
     }
@@ -59,6 +64,7 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
     @Override
     public Boolean reportModify(JwtPayload payload, reportModifyRequest request) {
 
+        TDevice oldDevice = deviceMapper.selectById(request.device_id());
         UpdateWrapper<TDevice> wrapper = new UpdateWrapper<>();
         wrapper.eq(TDevice.DEVICE_ID, request.device_id());
 
@@ -105,7 +111,13 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
 
         mqttPublisher.commonPush(request.device_UUID() + "/reportModify", request);
 
-        return deviceMapper.update(wrapper) >= 1;
+        boolean success = deviceMapper.update(wrapper) >= 1;
+        if (success) {
+            evictDeviceCache(oldDevice);
+            evictDeviceCache(request.device_UUID());
+        }
+
+        return success;
     }
 
 //    @Override
@@ -152,16 +164,23 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
 
         mqttPublisher.commonPush(device.getDevice_uuid() + "/deviceDelete", request);
 
-        return deviceMapper.update(
+        boolean success = deviceMapper.update(
                 new UpdateWrapper<TDevice>()
                         .eq(TDevice.USER_ID, payload.getUser_id())
                         .eq(TDevice.DEVICE_ID, request.device_id())
                         .set(TDevice.DELETED, 1)
         ) >= 1;
 
+        if (success) {
+            evictDeviceCache(device);
+        }
+
+        return success;
+
     }
 
     @Override
+    @Cacheable(cacheNames = "deviceByUUID", key = "#deviceUUID", unless = "#result == null")
     public TDevice getDeviceByUUID(String deviceUUID) {
         LambdaQueryWrapper<TDevice> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(TDevice::getDevice_uuid, deviceUUID)
@@ -169,5 +188,20 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
         return baseMapper.selectOne(queryWrapper);
     }
 
+    private void evictDeviceCache(TDevice device) {
+        if (device != null) {
+            evictDeviceCache(device.getDevice_uuid());
+        }
+    }
+
+    private void evictDeviceCache(String deviceUUID) {
+        if (!StringUtils.hasText(deviceUUID)) {
+            return;
+        }
+        Cache cache = cacheManager.getCache("deviceByUUID");
+        if (cache != null) {
+            cache.evict(deviceUUID);
+        }
+    }
 
 }

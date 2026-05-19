@@ -104,6 +104,12 @@ public class EnergyDataServiceImpl implements EnergyDataService {
                 .receivedTime(Instant.now())
                 .lastUpdateTime(dto.getTimestamp() != null ?
                         dto.getTimestamp().atZone(ZoneId.systemDefault()).toInstant() : Instant.now())
+
+                .user_id(dto.getUser_id())
+                .device_id(dto.getDevice_id())
+                .device_type(dto.getDevice_type())
+                .device_name(dto.getDevice_name())
+                .location(dto.getLocation_pg())
                 .build();
     }
 

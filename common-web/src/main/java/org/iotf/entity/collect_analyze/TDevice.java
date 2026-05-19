@@ -65,6 +65,8 @@ public class TDevice implements Serializable {
 
     private Float current_threshold;
 
+    private String location;
+
     public static final String USER_ID = "user_id";
 
     public static final String DEVICE_ID = "device_id";
@@ -95,6 +97,8 @@ public class TDevice implements Serializable {
 
     public static final String CURRENT_THRESHOLD = "current_threshold";
 
+    public static final String LOCATION = "location";
+
     @Override
     public String toString() {
         return "TDevice{" +
@@ -113,6 +117,7 @@ public class TDevice implements Serializable {
                 ", overload_threshold = " + overload_threshold +
                 ", high_energy_threshold = " + high_energy_threshold +
                 ", current_threshold = " + current_threshold +
+                ", location = " + location +
         "}";
     }
 }
