@@ -34,5 +34,12 @@ spring:
               filters:
                 - PreserveHostHeader
 
+            - id: collect-analyze-service-route
+              uri: lb://collect-analyze-service
+              predicates:
+                - Path=/api/**
+              filters:
+                - PreserveHostHeader
+
   config:
     import: nacos:gateway.yaml

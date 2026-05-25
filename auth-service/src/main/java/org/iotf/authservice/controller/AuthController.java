@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -145,7 +146,6 @@ public class AuthController {
             String refreshToken = jwtService.generateRefreshToken(payload);
 
             jwtService.setTokenForUserId(redisTemplate, user.getUser_id(), clientType, deviceId, refreshToken, accessToken, response);
-
 
             redisTemplate.delete("phoneCode:" + phone);
 
@@ -302,12 +302,12 @@ public class AuthController {
         }
 
         // 从 Redis 中获取用户对应的 refresh_token
-        String redisJti = redisTemplate.opsForValue().get(jwtService.generateSessionKey(payload.getUser_id(), payload.getClientType()));
+        Long redisJti = Long.valueOf(Objects.requireNonNull(redisTemplate.opsForValue().get(jwtService.generateSessionKey(payload.getUser_id(), payload.getClientType()))));
         if (redisJti == null) {
             return ApiResponse.fail(401,"未找到该用户的 refresh_token");
         }
 
-        // 比对 Redis 中存储的 refresh_token 和前端传来的 refresh_token
+        // 比对 Redis 中存储的 jti，注意 Redis 存的是 String
         if (!redisJti.equals(payload.getJti())) {
             return ApiResponse.fail(401,"refresh_token 不匹配");
         }
@@ -373,12 +373,12 @@ public class AuthController {
         }
 
         // 从 Redis 中获取用户对应的 refresh_token
-        String redisJti = redisTemplate.opsForValue().get(jwtService.generateSessionKey(payload.getUser_id(), payload.getClientType()));
+        Long redisJti = Long.valueOf(Objects.requireNonNull(redisTemplate.opsForValue().get(jwtService.generateSessionKey(payload.getUser_id(), payload.getClientType()))));
         if (redisJti == null) {
             return ApiResponse.fail(401,"未找到该用户的 refresh_token");
         }
 
-        // 比对 Redis 中存储的 refresh_token 和前端传来的 refresh_token
+        // 比对 Redis 中存储的 jti，注意 Redis 存的是 String
         if (!redisJti.equals(payload.getJti())) {
             return ApiResponse.fail(401,"refresh_token 不匹配");
         }
