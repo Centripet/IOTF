@@ -10,10 +10,11 @@ import org.iotf.entity.collect_analyze.EnergyAggDTO;
 import org.iotf.requestFormation.collect_analyze.energyAggByDeviceRequest;
 import org.iotf.requestFormation.collect_analyze.energyAggByUserRequest;
 import org.iotf.requestFormation.collect_analyze.energyAggListByDeviceRequest;
+import org.iotf.requestFormation.collect_analyze.energyDeviceListRequest;
 import org.iotf.requestFormation.energyAggListByUserRequest;
 import org.iotf.wrapper.responseHandle.ApiResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,12 +22,29 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import java.util.List;
 import java.util.Map;
 
-@Controller
+@RestController
 @RequestMapping("/api/influx")
 @RequiredArgsConstructor
 public class influxController {
 
     private final EnergyDataQueryService energyDataQueryService;
+
+    @PostMapping("/energyDeviceList")
+    @Operation(summary = "设备原始数据", description = "分页查询指定设备的原始能耗数据，按时间倒序")
+    public ApiResponse<?> energyDeviceList(
+            @Valid @RequestBody energyDeviceListRequest request,
+            HttpServletResponse response,
+            @AuthenticationPrincipal JwtPayload payload
+    ) {
+        List<Map<String, Object>> records = energyDataQueryService.queryDeviceRawData(
+                request.device_id(), request.page(), request.size());
+
+        return ApiResponse.success(Map.of(
+                "records", records,
+                "page", request.page(),
+                "size", request.size()
+        ));
+    }
 
     @PostMapping("/energyAggByDevice")
     @Operation(summary = "能耗聚合-设备", description = "查询指定设备最近一次能耗聚合数据")

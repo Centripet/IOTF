@@ -162,9 +162,14 @@ public class EnergyDataQueryServiceImpl implements EnergyDataQueryService {
             query.append(String.format("  |> filter(fn: (r) => r[\"user_id\"] == \"%s\")%n", userId));
         }
 
-        query.append("""
+        // 按设备聚合保留device_id/user_id，按用户聚合只保留user_id，防止tag不一致导致pivot拆行
+        String keepColumns = byDevice
+                ? "[\"_time\", \"_field\", \"_value\", \"device_id\", \"user_id\"]"
+                : "[\"_time\", \"_field\", \"_value\", \"user_id\"]";
+        query.append(String.format("""
+                  |> keep(columns: %s)
                   |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
-                """);
+                """, keepColumns));
 
         if (latestOnly) {
             query.append("  |> sort(columns: [\"_time\"], desc: true)\n");
@@ -272,5 +277,47 @@ public class EnergyDataQueryServiceImpl implements EnergyDataQueryService {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    @Override
+    public List<Map<String, Object>> queryDeviceRawData(Long deviceId, Integer page, Integer size) {
+        int safePage = page == null || page < 1 ? 1 : page;
+        int safeSize = size == null || size < 1 ? 50 : Math.min(size, 100);
+        int offset = (safePage - 1) * safeSize;
+
+        String query = String.format("""
+                from(bucket: "%s")
+                  |> range(start: -7d)
+                  |> filter(fn: (r) => r["_measurement"] == "device_energy_raw")
+                  |> filter(fn: (r) => r["device_id"] == "%s")
+                  |> keep(columns: ["_time", "_field", "_value"])
+                  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+                  |> sort(columns: ["_time"], desc: true)
+                  |> limit(n: %d, offset: %d)
+                """, bucket, deviceId, safeSize, offset);
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        try {
+            List<FluxTable> tables = influxDBClient.getQueryApi().query(query);
+            for (FluxTable table : tables) {
+                for (FluxRecord record : table.getRecords()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    row.put("time", record.getTime());
+                    // 提取所有字段值
+                    record.getValues().forEach((key, value) -> {
+                        if (!key.startsWith("_") && value != null) {
+                            row.put(key, value);
+                        }
+                    });
+                    if (row.size() > 1) { // 至少有时间+一个字段
+                        result.add(row);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Query device raw data failed: deviceId={}, error={}", deviceId, e.getMessage(), e);
+        }
+
+        return result;
     }
 }

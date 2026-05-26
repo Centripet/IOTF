@@ -14,7 +14,6 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.iotf.requestFormation.collect_analyze.*;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -57,6 +56,7 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
 
         mqttPublisher.commonPush(request.device_UUID() + "/deviceSubmit", request);
         evictDeviceCache(request.device_UUID());
+        deviceMapper.insert(device);
 
         return device;
     }
@@ -180,7 +180,6 @@ public class TDeviceServiceImpl extends ServiceImpl<TDeviceMapper, TDevice> impl
     }
 
     @Override
-    @Cacheable(cacheNames = "deviceByUUID", key = "#deviceUUID", unless = "#result == null")
     public TDevice getDeviceByUUID(String deviceUUID) {
         LambdaQueryWrapper<TDevice> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(TDevice::getDevice_uuid, deviceUUID)

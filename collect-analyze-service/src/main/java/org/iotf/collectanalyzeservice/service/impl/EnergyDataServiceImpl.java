@@ -100,10 +100,10 @@ public class EnergyDataServiceImpl implements EnergyDataService {
                 .isFault(dto.getIsFault())
                 .isComplete(dto.getIsComplete())
                 .timestamp(dto.getTimestamp() != null ?
-                        dto.getTimestamp().atZone(ZoneId.systemDefault()).toInstant() : Instant.now())
+                        Instant.ofEpochSecond(dto.getTimestamp()) : Instant.now())
                 .receivedTime(Instant.now())
                 .lastUpdateTime(dto.getTimestamp() != null ?
-                        dto.getTimestamp().atZone(ZoneId.systemDefault()).toInstant() : Instant.now())
+                        Instant.ofEpochSecond(dto.getTimestamp()) : Instant.now())
 
                 .user_id(dto.getUser_id())
                 .device_id(dto.getDevice_id())
@@ -152,7 +152,8 @@ public class EnergyDataServiceImpl implements EnergyDataService {
         try {
             WriteApiBlocking writeApi = influxDBClient.getWriteApiBlocking();
             writeApi.writeMeasurement(bucket, influxOrg, WritePrecision.NS, dataPoint);
-            log.debug("数据已写入InfluxDB: deviceUUID={}", dataPoint.getDeviceUUID());
+
+            log.info("数据已写入InfluxDB: {}", dataPoint.toString());
         } catch (Exception e) {
             log.error("写入InfluxDB失败: {}", e.getMessage(), e);
         }

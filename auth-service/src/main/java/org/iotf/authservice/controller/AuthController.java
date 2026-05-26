@@ -181,7 +181,7 @@ public class AuthController {
             if (!request.passwordHash().matches(regex)) {
                 return ApiResponse.fail(400,"密码必须包含大小写字母");
             }
-            if (!userService.resetPassword(request, user)) {
+            if (!userService.forgetAndResetPassword(request, user)) {
                 return ApiResponse.fail(500, "重置失败");
             }
 

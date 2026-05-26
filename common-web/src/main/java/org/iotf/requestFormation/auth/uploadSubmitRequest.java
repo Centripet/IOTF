@@ -9,6 +9,7 @@ public record uploadSubmitRequest(
         @NotNull @NotBlank String origin_name,
         @NotNull Integer type,
         String title,
-        String info
+        String info,
+        String typeInfo
         ) {
 }

@@ -28,7 +28,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TFileServiceImpl extends ServiceImpl<TFileMapper, TFile> implements ITFileService {
 
-    private final TFileMapper wFileMapper;
+    private final TFileMapper fileMapper;
     private final AliOssService ossService;
 
     @Override
@@ -46,7 +46,10 @@ public class TFileServiceImpl extends ServiceImpl<TFileMapper, TFile> implements
                     .is_public_read(is_public_read)
                     .origin_name(request.origin_name())
                     .build();
-            wFileMapper.insert(file);
+            if (request.typeInfo()!=null && request.typeInfo().equals("icon")) {
+                file.setIs_public_read(true);
+            }
+            fileMapper.insert(file);
             files.add(file);
         }
         return files;
@@ -65,7 +68,7 @@ public class TFileServiceImpl extends ServiceImpl<TFileMapper, TFile> implements
                 .is_public_read(is_public_read)
                 .origin_name(upload.getOrigin_name())
                 .build();
-        wFileMapper.insert(file);
+        fileMapper.insert(file);
         return file;
     }
 
@@ -73,7 +76,7 @@ public class TFileServiceImpl extends ServiceImpl<TFileMapper, TFile> implements
     public List<TFile> fileUrlsGen(fileUrlsGenRequest request) {
         LambdaQueryWrapper<TFile> wrapper = new LambdaQueryWrapper<>();
         wrapper.in(TFile::getFile_id, request.files_id());
-        List<TFile> files = wFileMapper.selectList(wrapper);
+        List<TFile> files = fileMapper.selectList(wrapper);
 
         ossService.generateUrlForEntity(files);
 

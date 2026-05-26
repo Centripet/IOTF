@@ -5,8 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-
 /**
  * 能耗数据DTO
  * 对应C代码中的EnergyData结构体
@@ -29,9 +27,9 @@ public class EnergyDataDTO {
     private String deviceUUID;
 
     /**
-     * 时间戳
+     * 时间戳（Unix epoch seconds，由MQTT消息直接传入）
      */
-    private LocalDateTime timestamp;
+    private Long timestamp;
 
     /**
      * 电流(A)

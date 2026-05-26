@@ -12,7 +12,6 @@ import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -52,8 +51,8 @@ public class MqttMessageListener {
      *   "totalEnergy": 128.6
      * }
      * from(bucket: "energy")
-     *   |> range(start: 0)
-     *   |> filter(fn: (r) => r["_measurement"] == "device_energy_raw")
+     *   |> range(start: -10m)
+     *   |> filter(fn: (r) => true)
      * 监听设备数据上报主题
      * @param message MQTT消息
      */
@@ -87,7 +86,7 @@ public class MqttMessageListener {
                 dataDTO.setDeviceId(deviceUUID);
             }
             if (dataDTO.getTimestamp() == null) {
-                dataDTO.setTimestamp(LocalDateTime.now());
+                dataDTO.setTimestamp(System.currentTimeMillis() / 1000);
             }
 
             TDevice device = deviceService.getDeviceByUUID(deviceUUID);
@@ -100,6 +99,7 @@ public class MqttMessageListener {
                 dataDTO.setLocation(device.getLocation());
                 dataDTO.setLocation_pg(device.getLocation());
                 // 处理上报数据
+//                System.out.println(dataDTO);
                 energyDataService.processReportedData(dataDTO);
             } else {
                 log.warn("Device metadata not found, skip reported data: deviceUUID={}", deviceUUID);
@@ -174,7 +174,7 @@ public class MqttMessageListener {
                         dto.setDeviceId(value);
                         break;
                     case "TIME":
-                        dto.setTimestamp(LocalDateTime.now());
+                        dto.setTimestamp(System.currentTimeMillis() / 1000);
                         break;
                     case "CURR":
                         dto.setCurrent(Double.parseDouble(value));
@@ -191,7 +191,7 @@ public class MqttMessageListener {
                 }
             }
             dto.setIsComplete(true);
-            dto.setTimestamp(LocalDateTime.now());
+            dto.setTimestamp(System.currentTimeMillis() / 1000);
             return dto;
         } catch (Exception e) {
             log.warn("简单格式解析失败: {}", e.getMessage());

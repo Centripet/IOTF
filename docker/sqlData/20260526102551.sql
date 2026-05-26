@@ -1,7 +1,7 @@
 /*
 PostgreSQL Backup
 Database: iotf/main
-Backup Time: 2026-05-18 00:41:01
+Backup Time: 2026-05-26 10:25:52
 */
 
 DROP SEQUENCE IF EXISTS "main"."t_alarm_alarm_id_seq";
@@ -158,27 +158,33 @@ CREATE TABLE "t_user" (
   "update_time" timestamp(6),
   "nick_name" varchar(64) COLLATE "pg_catalog"."default",
   "sex" int2,
-  "icon" varchar(255) COLLATE "pg_catalog"."default"
+  "icon" int8
 )
 ;
 ALTER TABLE "t_user" OWNER TO "root";
 BEGIN;
 LOCK TABLE "main"."t_alarm" IN SHARE MODE;
 DELETE FROM "main"."t_alarm";
+INSERT INTO "main"."t_alarm" ("alarm_id","device_id","device_name","alarm_type","alarm_level","status","trigger_value","threshold","description","triggered_time","acknowledged_time","resolved_time","acknowledged_by","create_time","update_time","device_uuid","user_id") VALUES (2059056943783342081, 111, '设备001', 'OVERLOAD', 'CRITICAL', 'ACKNOWLEDGED', 2234.68, 2000, '设备功率超过阈值(2234.68W > 2000.00W)', '2026-05-26 07:40:05.446033', '2026-05-26 07:47:32.69863', NULL, 2052671096486903809, '2026-05-26 07:40:05.477124', '2026-05-26 07:47:32.699144', 'device-001', 2052671096486903809)
+;
 COMMIT;
 BEGIN;
 LOCK TABLE "main"."t_alarm_log" IN SHARE MODE;
 DELETE FROM "main"."t_alarm_log";
+INSERT INTO "main"."t_alarm_log" ("alarm_log_id","alarm_id","from_status","to_status","change_reason","changed_time","create_time","update_time","user_id") VALUES (2059056943816896513, 2059056943783342081, NULL, 'TRIGGERED', '告警触发', '2026-05-26 07:40:05.491968', NULL, '2026-05-26 07:40:05.491968', 2052671096486903809),(2059058819543199745, 2059056943783342081, 'TRIGGERED', 'ACKNOWLEDGED', '用户确认', '2026-05-26 07:47:32.699144', '2026-05-26 07:47:32.699144', '2026-05-26 07:47:32.699144', 2052671096486903809)
+;
 COMMIT;
 BEGIN;
 LOCK TABLE "main"."t_device" IN SHARE MODE;
 DELETE FROM "main"."t_device";
-INSERT INTO "main"."t_device" ("user_id","device_id","device_uuid","device_type","create_time","update_time","device_name","deleted","frequency","alarm_status","report_status","threshold","location","overload_threshold","high_energy_threshold","current_threshold") VALUES (2052671096486903809, 111, 'device-001', 'AIRCON', NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, 'living-room', NULL, NULL, NULL)
+INSERT INTO "main"."t_device" ("user_id","device_id","device_uuid","device_type","create_time","update_time","device_name","deleted","frequency","alarm_status","report_status","threshold","location","overload_threshold","high_energy_threshold","current_threshold") VALUES (2052671096486903809, 111, 'device-001', 'AIRCON', NULL, '2026-05-26 07:16:14.704539', '设备001', 0, NULL, NULL, NULL, NULL, 'living-room', 2000, 500, 10),(2052671096486903809, 2059061072710705153, '222', 'smart_plug', '2026-05-26 07:56:29.557605', NULL, '222', 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
 ;
 COMMIT;
 BEGIN;
 LOCK TABLE "main"."t_file" IN SHARE MODE;
 DELETE FROM "main"."t_file";
+INSERT INTO "main"."t_file" ("file_id","file_key","is_public_read","uploader","create_time","update_time","type","suffix","title","info","origin_name","file_size") VALUES (2059018276935069697, 'uploads/general/2052671096486903809/2026/05/26/27f1019d7fe0412ca963954d330aa6e9.jpg', 't', 2052671096486903809, '2026-05-26 05:06:27', NULL, 1, '.jpg', NULL, NULL, '1Y%P2Z2S8)_NCJWVXES%[CM.jpg', NULL)
+;
 COMMIT;
 BEGIN;
 LOCK TABLE "main"."t_operation_log" IN SHARE MODE;
@@ -193,7 +199,7 @@ COMMIT;
 BEGIN;
 LOCK TABLE "main"."t_user" IN SHARE MODE;
 DELETE FROM "main"."t_user";
-INSERT INTO "main"."t_user" ("user_id","user_name","phone","email","salt","password_hash","role_id","user_status","create_time","update_time","nick_name","sex","icon") VALUES (2052671096486903809, 'Centripet', '13613480352', '123123w', 'd2791870dea4636f', '1b8874ac00a1ed31941a605e5c317a706915c10125b2505b526776bfc39f4c12', 1, 1, '2026-05-08 16:45:00.837629', NULL, NULL, NULL, NULL)
+INSERT INTO "main"."t_user" ("user_id","user_name","phone","email","salt","password_hash","role_id","user_status","create_time","update_time","nick_name","sex","icon") VALUES (2052671096486903809, 'Centripet', '13613480352', '123123w', 'd2791870dea4636f', '1b8874ac00a1ed31941a605e5c317a706915c10125b2505b526776bfc39f4c12', 1, 1, '2026-05-08 16:45:00.837629', '2026-05-26 05:36:37.318786', 'Centripet', 1, 2059018276935069697)
 ;
 COMMIT;
 ALTER TABLE "t_alarm" ADD CONSTRAINT "t_alarm_pkey" PRIMARY KEY ("alarm_id");

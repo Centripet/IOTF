@@ -10,13 +10,16 @@ import org.iotf.authservice.mapper.SUserMapper;
 import org.iotf.authservice.mapper.TFileMapper;
 import org.iotf.authservice.service.AliOssService;
 import org.iotf.authservice.service.ITFileService;
+import org.iotf.entity.auth.dao.SUser;
 import org.iotf.entity.auth.dao.TUser;
 import org.iotf.authservice.mapper.TUserMapper;
 import org.iotf.authservice.service.ITUserService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import org.iotf.entity.collect_analyze.TDevice;
 import org.iotf.requestFormation.auth.forgetPasswordRequest;
 import org.iotf.requestFormation.auth.loginRequest;
 import org.iotf.requestFormation.auth.registerRequest;
+import org.iotf.requestFormation.auth.userSelfModifyRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -86,7 +89,7 @@ public class TUserServiceImpl extends ServiceImpl<TUserMapper, TUser> implements
     }
 
     @Override
-    public boolean userExists(registerRequest request) {
+    public Boolean userExists(registerRequest request) {
         String userName = request.user_name();
         String phone = request.phone();
         // 构建查询条件
@@ -100,7 +103,7 @@ public class TUserServiceImpl extends ServiceImpl<TUserMapper, TUser> implements
     }
 
     @Override
-    public boolean registerService(registerRequest request) {
+    public Boolean registerService(registerRequest request) {
         String salt = generateHexSalt(16);
         String passwordHash = DigestUtils.sha256Hex(salt + request.passwordHash());
 
@@ -118,7 +121,7 @@ public class TUserServiceImpl extends ServiceImpl<TUserMapper, TUser> implements
     }
 
     @Override
-    public boolean resetPassword(forgetPasswordRequest request, TUser user) {
+    public Boolean forgetAndResetPassword(forgetPasswordRequest request, TUser user) {
         return tUserMapper.update(
                 new UpdateWrapper<TUser>()
                         .eq("user_id", user.getUser_id())
@@ -135,6 +138,58 @@ public class TUserServiceImpl extends ServiceImpl<TUserMapper, TUser> implements
     @Override
     public String resolveDeviceId(HttpServletRequest httpRequest) {
         return "unknown";
+    }
+
+    @Override
+    public Boolean verifyPassword(Long userId, String passwordHashOld) {
+        TUser user = tUserMapper.selectById(userId);
+        return user.getPassword_hash().equals(DigestUtils.sha256Hex(user.getSalt() + passwordHashOld));
+    }
+
+    @Override
+    public Boolean resetPassword(Long userId, String passwordHash) {
+        TUser user = tUserMapper.selectById(userId);
+        return tUserMapper.update(
+                new UpdateWrapper<TUser>().eq(TUser.USER_ID, userId)
+                        .set(TUser.PASSWORD_HASH, DigestUtils.sha256Hex(user.getSalt() + passwordHash))
+        ) >= 1;
+    }
+
+    @Override
+    public Boolean userSelfModify(Long userId, userSelfModifyRequest request) {
+        TUser user = tUserMapper.selectById(userId);
+        UpdateWrapper<TUser> wrapper = new UpdateWrapper<>();
+        wrapper.eq(TUser.USER_ID, userId);
+
+        boolean updated = false;
+
+        if (request.nick_name() != null) {
+            wrapper.set(TUser.NICK_NAME, request.nick_name());
+            updated = true;
+        }
+        if (request.sex() != null) {
+            wrapper.set(TUser.SEX, request.sex());
+            updated = true;
+        }
+        if (request.icon() != null) {
+            wrapper.set(TUser.ICON, request.icon());
+            updated = true;
+        }
+
+        if (!updated) {
+            return true;
+        }
+
+        wrapper.set(TUser.UPDATE_TIME, LocalDateTime.now());
+
+        return tUserMapper.update(wrapper) >= 1;
+    }
+
+    @Override
+    public SUser userSelfDetail(Long userId) {
+        return sUserMapper.selectOne(
+                new QueryWrapper<SUser>().eq(SUser.USER_ID, userId)
+        );
     }
 
 }

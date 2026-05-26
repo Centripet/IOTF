@@ -1,4 +1,4 @@
-nacos:123
+nacos:123123
 
 所有继承
 IOTF        -> common-core
