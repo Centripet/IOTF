@@ -280,6 +280,38 @@ public class EnergyDataQueryServiceImpl implements EnergyDataQueryService {
     }
 
     @Override
+    public Double queryUserEnergySum(Long userId, LocalDateTime startTime, LocalDateTime endTime) {
+        long startEpoch = startTime.atZone(ZoneId.systemDefault()).toInstant().getEpochSecond();
+        long endEpoch = endTime.atZone(ZoneId.systemDefault()).toInstant().getEpochSecond();
+
+        String query = String.format("""
+                from(bucket: "%s")
+                  |> range(start: %ds, stop: %ds)
+                  |> filter(fn: (r) => r["_measurement"] == "user_energy_hourly")
+                  |> filter(fn: (r) => r["user_id"] == "%s")
+                  |> filter(fn: (r) => r["_field"] == "energy_sum_wh")
+                  |> sum()
+                """, aggBucket, startEpoch, endEpoch, userId);
+
+        try {
+            List<FluxTable> tables = influxDBClient.getQueryApi().query(query);
+            for (FluxTable table : tables) {
+                for (FluxRecord record : table.getRecords()) {
+                    Object value = record.getValue();
+                    if (value instanceof Number) {
+                        return ((Number) value).doubleValue();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("Query user energy sum failed: userId={}, start={}, end={}, error={}",
+                    userId, startTime, endTime, e.getMessage(), e);
+        }
+
+        return 0.0;
+    }
+
+    @Override
     public List<Map<String, Object>> queryDeviceRawData(Long deviceId, Integer page, Integer size) {
         int safePage = page == null || page < 1 ? 1 : page;
         int safeSize = size == null || size < 1 ? 50 : Math.min(size, 100);

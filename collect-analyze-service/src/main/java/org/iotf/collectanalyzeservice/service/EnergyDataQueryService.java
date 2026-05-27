@@ -40,4 +40,13 @@ public interface EnergyDataQueryService {
      * @return 按时间排序的原始数据列表，每条记录包含_time和所有字段值
      */
     List<Map<String, Object>> queryDeviceRawData(Long deviceId, Integer page, Integer size);
+
+    /**
+     * 查询指定时间段内用户所有设备的总能耗
+     * @param userId 用户ID
+     * @param startTime 开始时间
+     * @param endTime 结束时间
+     * @return 该时间段内总能耗（单位：瓦时 Wh），无数据时返回0.0
+     */
+    Double queryUserEnergySum(Long userId, LocalDateTime startTime, LocalDateTime endTime);
 }

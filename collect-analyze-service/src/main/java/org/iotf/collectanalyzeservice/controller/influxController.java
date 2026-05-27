@@ -7,10 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.iotf.collectanalyzeservice.service.EnergyDataQueryService;
 import org.iotf.entity.auth.JwtPayload;
 import org.iotf.entity.collect_analyze.EnergyAggDTO;
-import org.iotf.requestFormation.collect_analyze.energyAggByDeviceRequest;
-import org.iotf.requestFormation.collect_analyze.energyAggByUserRequest;
-import org.iotf.requestFormation.collect_analyze.energyAggListByDeviceRequest;
-import org.iotf.requestFormation.collect_analyze.energyDeviceListRequest;
+import org.iotf.requestFormation.collect_analyze.*;
 import org.iotf.requestFormation.energyAggListByUserRequest;
 import org.iotf.wrapper.responseHandle.ApiResponse;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -30,7 +27,7 @@ public class influxController {
     private final EnergyDataQueryService energyDataQueryService;
 
     @PostMapping("/energyDeviceList")
-    @Operation(summary = "设备原始数据", description = "分页查询指定设备的原始能耗数据，按时间倒序")
+    @Operation(summary = "设备上报原始数据", description = "分页查询指定设备的原始能耗数据，按时间倒序")
     public ApiResponse<?> energyDeviceList(
             @Valid @RequestBody energyDeviceListRequest request,
             HttpServletResponse response,
@@ -43,6 +40,22 @@ public class influxController {
                 "records", records,
                 "page", request.page(),
                 "size", request.size()
+        ));
+    }
+
+    @PostMapping("/energySumByUser")
+    @Operation(summary = "时间段内用户总能耗", description = "查询当前用户指定时间段内所有设备的总能耗，返回瓦时(Wh)")
+    public ApiResponse<?> energySumByUser(
+            @Valid @RequestBody energySumByUserRequest request,
+            HttpServletResponse response,
+            @AuthenticationPrincipal JwtPayload payload
+    ) {
+        Double energySumWh = energyDataQueryService.queryUserEnergySum(
+                payload.getUser_id(), request.startTime(), request.endTime());
+        return ApiResponse.success(Map.of(
+                "energy_sum_wh", energySumWh,
+                "startTime", request.startTime().toString(),
+                "endTime", request.endTime().toString()
         ));
     }
 
