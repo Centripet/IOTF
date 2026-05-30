@@ -1,0 +1,2990 @@
+package com.lowcarbon.platform;
+
+import java.util.*;
+import java.util.concurrent.*;
+import java.security.*;
+import javax.crypto.*;
+import java.io.*;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
+import com.google.gson.*;
+public class LowCarbonPlatform {
+    private static UserManager userManager = new UserManager();
+    private static DataCollector dataCollector = new DataCollector();
+    private static CarbonCalculator carbonCalculator = new CarbonCalculator();
+    private static RankingManager rankingManager = new RankingManager();
+    private static CommunicationModule communicationModule = new CommunicationModule();
+    private static AlertManager alertManager = new AlertManager();
+    private static DataStorage dataStorage = new DataStorage();
+    private static UserInterface userInterface = new UserInterface();
+    public static void main(String[] args) {
+        initializeSystem();
+        startCoreServices();
+        mainLoop();
+    }
+    private static void initializeSystem() {
+        System.out.println("系统初始化中...");
+        carbonCalculator.loadEmissionFactors();
+        dataStorage.initDatabaseConnection();
+        rankingManager.loadCommunityInfo();
+        communicationModule.initProtocols();
+        System.out.println("系统初始化完成");
+    }
+    private static void startCoreServices() {
+        new Thread(dataCollector::startCollectionService).start();
+        new Thread(carbonCalculator::startAnalysisService).start();
+        new Thread(rankingManager::startRankingService).start();
+        new Thread(alertManager::startMonitoringService).start();
+        new Thread(communicationModule::startCommunicationService).start();
+    }
+    private static void mainLoop() {
+        Scanner scanner = new Scanner(System.in);
+        while (true) {
+            userInterface.showMainMenu();
+            int choice = scanner.nextInt();
+            scanner.nextLine(); // 消费换行符
+            switch (choice) {
+                case 1:
+                    userInterface.handleLogin();
+                    break;
+                case 2:
+                    userInterface.handleRegistration();
+                    break;
+                case 3:
+                    userInterface.handleDataEntry();
+                    break;
+                case 4:
+                    userInterface.handleDataQuery();
+                    break;
+                case 5:
+                    userInterface.handleRankingQuery();
+                    break;
+                case 6:
+                    userInterface.handleInfoModification();
+                    break;
+                case 7:
+                    System.out.println("系统退出中...");
+                    scanner.close();
+                    System.exit(0);
+                    break;
+                default:
+                    System.out.println("无效选择，请重新输入");
+            }
+        }
+    }
+}
+class UserManager {
+    private Map<String, User> userMap = new HashMap<>();
+    private Map<String, User> tokenMap = new ConcurrentHashMap<>();
+    private static final String ENCRYPT_ALGORITHM = "AES";
+    private SecretKey secretKey;
+    public UserManager() {
+        try {
+            KeyGenerator keyGen = KeyGenerator.getInstance(ENCRYPT_ALGORITHM);
+            keyGen.init(128);
+            secretKey = keyGen.generateKey();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("初始化加密算法", e);
+        }
+    }
+    public boolean register(String phone, String password, String familyName, int familySize, String communityId) {
+        if (userMap.containsKey(phone)) {
+            return false;
+        }
+        String encryptedPwd = encryptPassword(password);
+        User user = new User();
+        user.phone = phone;
+        user.password = encryptedPwd;
+        user.familyName = familyName;
+        user.familySize = familySize;
+        user.communityId = communityId;
+        user.registrationTime = new Date();
+        // 保存用户信息
+        userMap.put(phone, user);
+        // 存储到数据库
+        dataStorage.saveUser(user);
+        return true;
+    }
+
+    // 处理用户登录
+    public String login(String phone, String password) {
+        // 查找用户
+        User user = userMap.get(phone);
+        if (user == null) {
+            return null;
+        }
+        // 验证密码
+        String encryptedPwd = encryptPassword(password);
+        if (!user.password.equals(encryptedPwd)) {
+            return null;
+        }
+        // 生成登录令牌
+        String token = generateToken(phone);
+        // 存储令牌
+        tokenMap.put(token, user);
+        // 记录登录时间
+        user.lastLoginTime = new Date();
+        dataStorage.updateUserLoginTime(phone, user.lastLoginTime);
+        return token;
+    }
+
+    // 验证令牌有效性
+    public boolean validateToken(String token) {
+        return tokenMap.containsKey(token);
+    }
+
+    // 根据令牌获取用户
+    public User getUserByToken(String token) {
+        return tokenMap.get(token);
+    }
+
+    // 用户登出
+    public void logout(String token) {
+        tokenMap.remove(token);
+    }
+
+    // 更新用户信息
+    public boolean updateUserInfo(String token, String familyName, int familySize, String communityId) {
+        User user = tokenMap.get(token);
+        if (user == null) {
+            return false;
+        }
+        // 更新信息
+        if (familyName != null) {
+            user.familyName = familyName;
+        }
+        if (familySize > 0) {
+            user.familySize = familySize;
+        }
+        if (communityId != null) {
+            user.communityId = communityId;
+        }
+        // 保存更新
+        dataStorage.updateUser(user);
+        return true;
+    }
+
+    // 密码加密
+    private String encryptPassword(String password) {
+        try {
+            Cipher cipher = Cipher.getInstance(ENCRYPT_ALGORITHM);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+            byte[] encrypted = cipher.doFinal(password.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(encrypted);
+        } catch (Exception e) {
+            throw new RuntimeException("密码加密", e);
+        }
+    }
+
+    // 生成令牌
+    private String generateToken(String phone) {
+        try {
+            String input = phone + System.currentTimeMillis();
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("令牌生成", e);
+        }
+    }
+
+    // 加载用户数据
+    public void loadUserData() {
+        List<User> users = dataStorage.loadAllUsers();
+        for (User user : users) {
+            userMap.put(user.phone, user);
+        }
+    }
+}
+
+// 数据采集相关功能
+class DataCollector {
+    // 智能设备映射
+    private Map<String, DeviceInterface> deviceInterfaces = new HashMap<>();
+    // 数据采集任务调度器
+    private ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(5);
+
+    // 启动数据采集服务
+    public void startCollectionService() {
+        System.out.println("数据采集服务启动");
+        // 初始化设备
+        initDeviceInterfaces();
+        // 调度定时采集任务
+        scheduleRegularCollection();
+    }
+
+    // 初始化设备
+    private void initDeviceInterfaces() {
+        deviceInterfaces.put("electricity", new ElectricityMeterInterface());
+        deviceInterfaces.put("water", new WaterMeterInterface());
+        deviceInterfaces.put("gas", new GasMeterInterface());
+    }
+
+    // 调度定时采集任务
+    private void scheduleRegularCollection() {
+        // 每小时采集一次用电数据
+        scheduler.scheduleAtFixedRate(() -> collectDeviceData("electricity"), 0, 1, TimeUnit.HOURS);
+        // 每6小时采集一次用水数据
+        scheduler.scheduleAtFixedRate(() -> collectDeviceData("water"), 0, 6, TimeUnit.HOURS);
+        // 每天采集一次用气数据
+        scheduler.scheduleAtFixedRate(() -> collectDeviceData("gas"), 0, 24, TimeUnit.HOURS);
+    }
+
+    // 采集设备数据
+    private void collectDeviceData(String type) {
+        DeviceInterface device = deviceInterfaces.get(type);
+        if (device == null) {
+            return;
+        }
+        List<DeviceData> dataList = device.collectData();
+        for (DeviceData data : dataList) {
+            // 数据校验
+            if (validateData(type, data.value)) {
+                // 存储数据
+                saveCollectedData(data.userId, type, data.timestamp, data.value);
+            } else {
+                // 标记异常数据
+                markAbnormalData(data.userId, type, data.timestamp, data.value, "数据校验");
+            }
+        }
+    }
+
+    // 手动录入数据处理
+    public boolean manualDataEntry(String token, String type, double value, Date timestamp) {
+        // 验证用户
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return false;
+        }
+        // 数据校验
+        if (!isManualEntryType(type)) {
+            return false;
+        }
+        // 数据合理性校验
+        if (!validateData(type, value)) {
+            return false;
+        }
+        // 保存数据
+        saveCollectedData(user.phone, type, timestamp, value);
+        return true;
+    }
+
+    // 数据补录处理
+    public boolean补录数据(String token, String type, double value, Date timestamp) {
+        // 验证用户
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return false;
+        }
+        // 检查补录时间范围（7天内）
+        long now = System.currentTimeMillis();
+        long dataTime = timestamp.getTime();
+        if (now - dataTime > 7 * 24 * 60 * 60 * 1000L) {
+            return false;
+        }
+        // 数据校验
+        if (!validateData(type, value)) {
+            return false;
+        }
+        // 保存补录数据
+        saveCollectedData(user.phone, type, timestamp, value);
+        return true;
+    }
+
+    // 数据合理性校验
+    private boolean validateData(String type, double value) {
+        switch (type) {
+            case "electricity":
+            case "water":
+            case "gas":
+            case "travel_mileage":
+                return value >= 0; // 不能为负数
+            case "garbage_recycle":
+                return value >= 0 && value <= 100; // 回收比例0-100
+            default:
+                return true;
+        }
+    }
+
+    // 判断是否为手动录入
+    private boolean isManualEntryType(String type) {
+        return "travel".equals(type) || "garbage".equals(type) || "travel_mileage".equals(type);
+    }
+
+    // 保存采集的数据
+    private void saveCollectedData(String userId, String type, Date timestamp, double value) {
+        FamilyData data = new FamilyData();
+        data.userId = userId;
+        data.dataType = type;
+        data.timestamp = timestamp;
+        data.value = value;
+        data.isManual = "travel".equals(type) || "garbage".equals(type);
+        dataStorage.saveFamilyData(data);
+        // 触发数据分析
+        carbonCalculator.triggerDataAnalysis(userId, timestamp);
+    }
+
+    // 标记异常数据
+    private void markAbnormalData(String userId, String type, Date timestamp, double value, String reason) {
+        AbnormalData abnormal = new AbnormalData();
+        abnormal.userId = userId;
+        abnormal.dataType = type;
+        abnormal.timestamp = timestamp;
+        abnormal.value = value;
+        abnormal.reason = reason;
+        dataStorage.saveAbnormalData(abnormal);
+    }
+
+    // 注册智能设备
+    public boolean registerDevice(String token, String deviceType, String deviceId) {
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return false;
+        }
+        DeviceInterface device = deviceInterfaces.get(deviceType);
+        if (device == null) {
+            return false;
+        }
+        return device.registerDevice(user.phone, deviceId);
+    }
+}
+
+// 碳排放计算与分析功能
+class CarbonCalculator {
+    // 碳排放系数库
+    private Map<String, Double> emissionFactors = new HashMap<>();
+    // 分析任务队列
+    private BlockingQueue<AnalysisTask> analysisQueue = new LinkedBlockingQueue<>();
+    // 分析线程池
+    private ExecutorService analysisPool = Executors.newFixedThreadPool(3);
+
+    // 加载碳排放系数
+    public void loadEmissionFactors() {
+        // 从配置加载系数
+        emissionFactors.put("electricity", 0.785); // 每度电碳排放系数(kg)
+        emissionFactors.put("water", 0.085); // 每立方米水碳排放系数(kg)
+        emissionFactors.put("gas", 2.16); // 每立方米天然气碳排放系数(kg)
+        emissionFactors.put("travel_car", 0.17); // 私家车每公里碳排放系数(kg)
+        emissionFactors.put("travel_bus", 0.08); // 公交每公里碳排放系数(kg)
+        emissionFactors.put("travel_subway", 0.06); // 地铁每公里碳排放系数(kg)
+    }
+
+    // 启动数据分析服务
+    public void startAnalysisService() {
+        System.out.println("数据分析服务启动");
+        // 启动分析线程
+        for (int i = 0; i < 3; i++) {
+            analysisPool.submit(() -> processAnalysisTasks());
+        }
+    }
+
+    // 处理分析任务
+    private void processAnalysisTasks() {
+        while (true) {
+            try {
+                AnalysisTask task = analysisQueue.take();
+                calculateCarbonEmission(task.userId, task.date);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    // 触发数据分析
+    public void triggerDataAnalysis(String userId, Date date) {
+        try {
+            analysisQueue.put(new AnalysisTask(userId, date));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // 计算碳排放量
+    private void calculateCarbonEmission(String userId, Date date) {
+        // 获取当天的所有数据
+        List<FamilyData> dailyData = dataStorage.getFamilyDataByDate(userId, date);
+        if (dailyData.isEmpty()) {
+            return;
+        }
+
+        // 计算各项碳排放量
+        double electricityEmission = 0;
+        double waterEmission = 0;
+        double gasEmission = 0;
+        double travelEmission = 0;
+        double totalEmission = 0;
+
+        // 汇总各项数据
+        for (FamilyData data : dailyData) {
+            switch (data.dataType) {
+                case "electricity":
+                    electricityEmission = data.value * emissionFactors.get("electricity");
+                    break;
+                case "water":
+                    waterEmission = data.value * emissionFactors.get("water");
+                    break;
+                case "gas":
+                    gasEmission = data.value * emissionFactors.get("gas");
+                    break;
+                case "travel":
+                    // 处理出行数据
+                    String travelType = (String) data.extraData;
+                    double mileage = data.value;
+                    if ("car".equals(travelType)) {
+                        travelEmission += mileage * emissionFactors.get("travel_car");
+                    } else if ("bus".equals(travelType)) {
+                        travelEmission += mileage * emissionFactors.get("travel_bus");
+                    } else if ("subway".equals(travelType)) {
+                        travelEmission += mileage * emissionFactors.get("travel_subway");
+                    }
+                    break;
+            }
+        }
+
+        // 计算总量
+        totalEmission = electricityEmission + waterEmission + gasEmission + travelEmission;
+
+        // 获取家庭人数计算人均碳排放
+        User user = dataStorage.getUserByPhone(userId);
+        double perCapitaEmission = user.familySize > 0 ? totalEmission / user.familySize : 0;
+
+        // 保存计算结果
+        EmissionResult result = new EmissionResult();
+        result.userId = userId;
+        result.date = date;
+        result.electricity = electricityEmission;
+        result.water = waterEmission;
+        result.gas = gasEmission;
+        result.travel = travelEmission;
+        result.total = totalEmission;
+        result.perCapita = perCapitaEmission;
+        dataStorage.saveEmissionResult(result);
+
+        // 与社区平均水平对比
+        compareWithCommunityAverage(userId, result);
+
+        // 触发排名更新
+        rankingManager.triggerRankingUpdate(user.communityId, date);
+
+        // 检查是否需要预警
+        alertManager.checkAbnormalEmission(result);
+    }
+
+    // 与社区平均水平对比
+    private void compareWithCommunityAverage(String userId, EmissionResult result) {
+        User user = dataStorage.getUserByPhone(userId);
+        String communityId = user.communityId;
+        if (communityId == null) {
+            return;
+        }
+
+        // 获取社区当天平均数据
+        CommunityAverage avg = dataStorage.getCommunityDailyAverage(communityId, result.date);
+        if (avg == null) {
+            avg = calculateCommunityAverage(communityId, result.date);
+        }
+
+        // 计算差异
+        EmissionComparison comparison = new EmissionComparison();
+        comparison.userId = userId;
+        comparison.date = result.date;
+        comparison.communityAvgTotal = avg.total;
+        comparison.totalDiff = result.total - avg.total;
+        comparison.totalDiffRate = avg.total > 0 ? (result.total - avg.total) / avg.total : 0;
+
+        // 保存对比结果
+        dataStorage.saveEmissionComparison(comparison);
+    }
+
+    // 计算社区平均水平
+    private CommunityAverage calculateCommunityAverage(String communityId, Date date) {
+        // 获取社区所有用户
+        List<String> userIds = dataStorage.getUserIdsByCommunity(communityId);
+        if (userIds.isEmpty()) {
+            return null;
+        }
+
+        // 计算平均值
+        double totalSum = 0;
+        int count = 0;
+        for (String userId : userIds) {
+            EmissionResult result = dataStorage.getEmissionResult(userId, date);
+            if (result != null) {
+                totalSum += result.total;
+                count++;
+            }
+        }
+
+        if (count == 0) {
+            return null;
+        }
+
+        // 保存社区平均
+        CommunityAverage avg = new CommunityAverage();
+        avg.communityId = communityId;
+        avg.date = date;
+        avg.total = totalSum / count;
+        dataStorage.saveCommunityAverage(avg);
+        return avg;
+    }
+
+    // 获取历史碳排放数据
+    public List<EmissionResult> getHistoricalEmissions(String token, Date startDate, Date endDate) {
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return Collections.emptyList();
+        }
+        return dataStorage.getEmissionResultsByPeriod(user.phone, startDate, endDate);
+    }
+
+    // 分析任务内部
+    private static class AnalysisTask {
+        String userId;
+        Date date;
+
+        AnalysisTask(String userId, Date date) {
+            this.userId = userId;
+            this.date = date;
+        }
+    }
+}
+
+// 排名与对比功能
+class RankingManager {
+    // 社区信息映射
+    private Map<String, Community> communityMap = new HashMap<>();
+    // 排名更新队列
+    private BlockingQueue<RankingTask> rankingQueue = new LinkedBlockingQueue<>();
+    // 排名计算线程池
+    private ExecutorService rankingPool = Executors.newFixedThreadPool(2);
+
+    // 加载社区信息
+    public void loadCommunityInfo() {
+        List<Community> communities = dataStorage.loadAllCommunities();
+        for (Community community : communities) {
+            communityMap.put(community.id, community);
+        }
+    }
+
+    // 启动排名服务
+    public void startRankingService() {
+        System.out.println("排名服务启动");
+        // 启动排名计算线程
+        for (int i = 0; i < 2; i++) {
+            rankingPool.submit(() -> processRankingTasks());
+        }
+        // 每天凌晨2点计算前一天的排名
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        scheduler.scheduleAtFixedRate(() -> {
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DATE, -1);
+            Date yesterday = cal.getTime();
+            for (String communityId : communityMap.keySet()) {
+                triggerRankingUpdate(communityId, yesterday);
+            }
+        }, getInitialDelay(), 24, TimeUnit.HOURS);
+    }
+
+    // 计算初始延迟（到凌晨2点的时间）
+    private long getInitialDelay() {
+        Calendar now = Calendar.getInstance();
+        Calendar target = Calendar.getInstance();
+        target.set(Calendar.HOUR_OF_DAY, 2);
+        target.set(Calendar.MINUTE, 0);
+        target.set(Calendar.SECOND, 0);
+        if (now.after(target)) {
+            target.add(Calendar.DATE, 1);
+        }
+        return target.getTimeInMillis() - now.getTimeInMillis();
+    }
+
+    // 触发排名更新
+    public void triggerRankingUpdate(String communityId, Date date) {
+        try {
+            rankingQueue.put(new RankingTask(communityId, date));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // 处理排名任务
+    private void processRankingTasks() {
+        while (true) {
+            try {
+                RankingTask task = rankingQueue.take();
+                calculateDailyRanking(task.communityId, task.date);
+                // 每周一计算上周排名
+                Calendar cal = Calendar.getInstance();
+                cal.setTime(task.date);
+                if (cal.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY) {
+                    calculateWeeklyRanking(task.communityId, task.date);
+                }
+                // 每月1日计算上月排名
+                if (cal.get(Calendar.DAY_OF_MONTH) == 1) {
+                    calculateMonthlyRanking(task.communityId, task.date);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+    }
+
+    // 计算日排名
+    private void calculateDailyRanking(String communityId, Date date) {
+        // 获取社区所有用户
+        List<String> userIds = dataStorage.getUserIdsByCommunity(communityId);
+        if (userIds.isEmpty()) {
+            return;
+        }
+
+        // 收集用户碳排放数据
+        List<RankItem> rankItems = new ArrayList<>();
+        for (String userId : userIds) {
+            EmissionResult result = dataStorage.getEmissionResult(userId, date);
+            if (result != null) {
+                RankItem item = new RankItem();
+                item.userId = userId;
+                item.totalEmission = result.total;
+                item.perCapitaEmission = result.perCapita;
+                rankItems.add(item);
+            }
+        }
+
+        // 按总排放量排序（升序）
+        List<RankItem> totalRank = new ArrayList<>(rankItems);
+        totalRank.sort(Comparator.comparingDouble(a -> a.totalEmission));
+        saveRanking(communityId, date, "daily", "total", totalRank);
+
+        // 按人均排放量排序（升序）
+        List<RankItem> perCapitaRank = new ArrayList<>(rankItems);
+        perCapitaRank.sort(Comparator.comparingDouble(a -> a.perCapitaEmission));
+        saveRanking(communityId, date, "daily", "per_capita", perCapitaRank);
+    }
+
+    // 计算周排名
+    private void calculateWeeklyRanking(String communityId, Date date) {
+        // 计算上周的日期范围
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.setFirstDayOfWeek(Calendar.MONDAY);
+        cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
+        cal.add(Calendar.DATE, -7);
+        Date start = cal.getTime();
+        cal.add(Calendar.DATE, 6);
+        Date end = cal.getTime();
+
+        // 获取社区所有用户
+        List<String> userIds = dataStorage.getUserIdsByCommunity(communityId);
+        if (userIds.isEmpty()) {
+            return;
+        }
+
+        // 收集用户周碳排放数据
+        List<RankItem> rankItems = new ArrayList<>();
+        for (String userId : userIds) {
+            List<EmissionResult> results = dataStorage.getEmissionResultsByPeriod(userId, start, end);
+            if (results.isEmpty()) {
+                continue;
+            }
+            // 计算周总量
+            double total = 0;
+            double perCapita = 0;
+            for (EmissionResult r : results) {
+                total += r.total;
+                perCapita += r.perCapita;
+            }
+            // 计算平均值
+            total /= results.size();
+            perCapita /= results.size();
+
+            RankItem item = new RankItem();
+            item.userId = userId;
+            item.totalEmission = total;
+            item.perCapitaEmission = perCapita;
+            rankItems.add(item);
+        }
+
+        // 排序并保存
+        List<RankItem> totalRank = new ArrayList<>(rankItems);
+        totalRank.sort(Comparator.comparingDouble(a -> a.totalEmission));
+        saveRanking(communityId, start, "weekly", "total", totalRank);
+
+        List<RankItem> perCapitaRank = new ArrayList<>(rankItems);
+        perCapitaRank.sort(Comparator.comparingDouble(a -> a.perCapitaEmission));
+        saveRanking(communityId, start, "weekly", "per_capita", perCapitaRank);
+    }
+
+    // 计算月排名
+    private void calculateMonthlyRanking(String communityId, Date date) {
+        // 计算上月的日期范围
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.add(Calendar.MONTH, -1);
+        cal.set(Calendar.DAY_OF_MONTH, 1);
+        Date start = cal.getTime();
+        cal.add(Calendar.MONTH, 1);
+        cal.add(Calendar.DATE, -1);
+        Date end = cal.getTime();
+
+        // 获取社区所有用户
+        List<String> userIds = dataStorage.getUserIdsByCommunity(communityId);
+        if (userIds.isEmpty()) {
+            return;
+        }
+
+        // 收集用户月碳排放数据
+        List<RankItem> rankItems = new ArrayList<>();
+        for (String userId : userIds) {
+            List<EmissionResult> results = dataStorage.getEmissionResultsByPeriod(userId, start, end);
+            if (results.isEmpty()) {
+                continue;
+            }
+            // 计算月总量
+            double total = 0;
+            double perCapita = 0;
+            for (EmissionResult r : results) {
+                total += r.total;
+                perCapita += r.perCapita;
+            }
+
+            RankItem item = new RankItem();
+            item.userId = userId;
+            item.totalEmission = total;
+            item.perCapitaEmission = perCapita;
+            rankItems.add(item);
+        }
+
+        // 排序并保存
+        List<RankItem> totalRank = new ArrayList<>(rankItems);
+        totalRank.sort(Comparator.comparingDouble(a -> a.totalEmission));
+        saveRanking(communityId, start, "monthly", "total", totalRank);
+
+        List<RankItem> perCapitaRank = new ArrayList<>(rankItems);
+        perCapitaRank.sort(Comparator.comparingDouble(a -> a.perCapitaEmission));
+        saveRanking(communityId, start, "monthly", "per_capita", perCapitaRank);
+    }
+
+    // 保存排名结果
+    private void saveRanking(String communityId, Date date, String period, String type, List<RankItem> items) {
+        RankingResult ranking = new RankingResult();
+        ranking.communityId = communityId;
+        ranking.date = date;
+        ranking.period = period;
+        ranking.type = type;
+        ranking.rankList = new ArrayList<>();
+
+        // 生成排名列表
+        for (int i = 0; i < items.size(); i++) {
+            RankRecord record = new RankRecord();
+            record.userId = items.get(i).userId;
+            record.rank = i + 1;
+            record.value = "total".equals(type) ? items.get(i).totalEmission : items.get(i).perCapitaEmission;
+            ranking.rankList.add(record);
+        }
+
+        // 保存排名
+        dataStorage.saveRankingResult(ranking);
+
+        // 推送排名更新
+        communicationModule.pushRankingUpdate(communityId, period, type, date);
+    }
+
+    // 查询排名
+    public List<RankRecord> queryRanking(String token, String period, String type) {
+        User user = userManager.getUserByToken(token);
+        if (user == null || user.communityId == null) {
+            return Collections.emptyList();
+        }
+
+        // 获取当前周期的起始日期
+        Date date = getPeriodStartDate(period);
+        if (date == null) {
+            return Collections.emptyList();
+        }
+
+        // 查询排名
+        RankingResult ranking = dataStorage.getRankingResult(user.communityId, date, period, type);
+        if (ranking == null) {
+            return Collections.emptyList();
+        }
+
+        return ranking.rankList;
+    }
+
+    // 获取周期起始日期
+    private Date getPeriodStartDate(String period) {
+        Calendar cal = Calendar.getInstance();
+        switch (period) {
+            case "daily":
+                cal.add(Calendar.DATE, -1);
+                return cal.getTime();
+            case "weekly":
+                cal.setFirstDayOfWeek(Calendar.MONDAY);
+                cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
+                cal.add(Calendar.DATE, -7);
+                return cal.getTime();
+            case "monthly":
+                cal.set(Calendar.DAY_OF_MONTH, 1);
+                return cal.getTime();
+            default:
+                return null;
+        }
+    }
+
+    // 家庭间数据对比
+    public ComparisonResult compareFamilies(String token, List<String> targetUserIds) {
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return null;
+        }
+
+        // 添加当前用户到对比列表
+        List<String> allUserIds = new ArrayList<>(targetUserIds);
+        allUserIds.add(user.phone);
+
+        // 获取今天的数据
+        Date today = new Date();
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(today);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        Date start = cal.getTime();
+
+        // 收集对比数据
+        ComparisonResult result = new ComparisonResult();
+        result.date = today;
+        result.comparisonItems = new ArrayList<>();
+
+        for (String userId : allUserIds) {
+            EmissionResult emission = dataStorage.getEmissionResult(userId, start);
+            if (emission == null) {
+                continue;
+            }
+            User targetUser = dataStorage.getUserByPhone(userId);
+            if (targetUser == null) {
+                continue;
+            }
+
+            ComparisonItem item = new ComparisonItem();
+            item.familyName = targetUser.familyName;
+            item.totalEmission = emission.total;
+            item.electricity = emission.electricity;
+            item.water = emission.water;
+            item.gas = emission.gas;
+            item.travel = emission.travel;
+            item.perCapita = emission.perCapita;
+            result.comparisonItems.add(item);
+        }
+
+        return result;
+    }
+
+    // 排名任务内部
+    private static class RankingTask {
+        String communityId;
+        Date date;
+
+        RankingTask(String communityId, Date date) {
+            this.communityId = communityId;
+            this.date = date;
+        }
+    }
+}
+
+// 通讯功能
+class CommunicationModule {
+    // HTTP服务器
+    private HttpServer httpServer;
+    // WebSocket服务器
+    private WebSocketServer webSocketServer;
+    // 设备连接映射
+    private Map<String, DeviceConnection> deviceConnections = new HashMap<>();
+    // WebSocket会话映射
+    private Map<String, WebSocketSession> userSessions = new ConcurrentHashMap<>();
+
+    // 初始化通讯协议
+    public void initProtocols() {
+        try {
+            // 启动HTTP服务器（端口8080）
+            httpServer = HttpServer.create(new InetSocketAddress(8080), 0);
+            setupHttpEndpoints();
+
+            // 启动WebSocket服务器（端口8081）
+            webSocketServer = new WebSocketServer(new InetSocketAddress(8081)) {
+                @Override
+                public void onOpen(WebSocketSession session, ClientHandshake handshake) {
+                    String token = handshake.getFieldValue("Token");
+                    if (token != null && userManager.validateToken(token)) {
+                        User user = userManager.getUserByToken(token);
+                        userSessions.put(user.phone, session);
+                    }
+                }
+
+                @Override
+                public void onClose(WebSocketSession session, int statusCode, String reason, boolean remote) {
+                    userSessions.values().removeIf(s -> s == session);
+                }
+
+                @Override
+                public void onMessage(WebSocketSession session, String message) {
+                    // 处理WebSocket消息
+                    processWebSocketMessage(session, message);
+                }
+
+                @Override
+                public void onError(WebSocketSession session, Exception ex) {
+                    ex.printStackTrace();
+                }
+
+                @Override
+                public void onStart() {
+                    System.out.println("WebSocket服务器启动");
+                }
+            };
+        } catch (IOException e) {
+            throw new RuntimeException("通讯服务初始化", e);
+        }
+    }
+
+    // 设置HTTP端点
+    private void setupHttpEndpoints() {
+        httpServer.createContext("/login", this::handleLoginRequest);
+        httpServer.createContext("/register", this::handleRegisterRequest);
+        httpServer.createContext("/data/entry", this::handleDataEntryRequest);
+        httpServer.createContext("/data/query", this::handleDataQueryRequest);
+        httpServer.createContext("/ranking/query", this::handleRankingQueryRequest);
+        httpServer.createContext("/user/update", this::handleUserUpdateRequest);
+        httpServer.setExecutor(Executors.newFixedThreadPool(10));
+    }
+
+    // 启动通讯服务
+    public void startCommunicationService() {
+        httpServer.start();
+        webSocketServer.start();
+        System.out.println("通讯服务启动");
+    }
+
+    // 处理登录请求
+    private void handleLoginRequest(HttpExchange exchange) throws IOException {
+        if ("POST".equals(exchange.getRequestMethod())) {
+            // 解析请求数据
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject json = new JsonParser().parse(requestBody).getAsJsonObject();
+            String phone = json.get("phone").getAsString();
+            String password = json.get("password").getAsString();
+
+            // 处理登录
+            String token = userManager.login(phone, password);
+            JsonObject response = new JsonObject();
+            if (token != null) {
+                response.addProperty("success", true);
+                response.addProperty("token", token);
+            } else {
+                response.addProperty("success", false);
+                response.addProperty("message", "账号或密码");
+            }
+
+            // 发送响应
+            sendHttpResponse(exchange, response.toString());
+        } else {
+            exchange.sendResponseHeaders(405, -1);
+        }
+    }
+
+    // 处理注册请求
+    private void handleRegisterRequest(HttpExchange exchange) throws IOException {
+        if ("POST".equals(exchange.getRequestMethod())) {
+            // 解析请求数据
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject json = new JsonParser().parse(requestBody).getAsJsonObject();
+
+            // 处理注册
+            boolean success = userManager.register(
+                json.get("phone").getAsString(),
+                json.get("password").getAsString(),
+                json.get("familyName").getAsString(),
+                json.get("familySize").getAsInt(),
+                json.get("communityId").getAsString()
+            );
+
+            // 发送响应
+            JsonObject response = new JsonObject();
+            response.addProperty("success", success);
+            sendHttpResponse(exchange, response.toString());
+        } else {
+            exchange.sendResponseHeaders(405, -1);
+        }
+    }
+
+    // 发送HTTP响应
+    private void sendHttpResponse(HttpExchange exchange, String response) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+        exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(response.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    // 处理WebSocket消息
+    private void processWebSocketMessage(WebSocketSession session, String message) {
+        try {
+            JsonObject json = new JsonParser().parse(message).getAsJsonObject();
+            String type = json.get("type").getAsString();
+            String token = json.get("token").getAsString();
+
+            if (!userManager.validateToken(token)) {
+                session.sendMessage("无效的令牌");
+                return;
+            }
+
+            switch (type) {
+                case "subscribe_ranking":
+                    String period = json.get("period").getAsString();
+                    // 订阅排名更新
+                    break;
+                case "query_data":
+                    Date start = new Date(json.get("startTime").getAsLong());
+                    Date end = new Date(json.get("endTime").getAsLong());
+                    // 查询数据并返回
+                    User user = userManager.getUserByToken(token);
+                    List<EmissionResult> results = carbonCalculator.getHistoricalEmissions(token, start, end);
+                    // 发送结果
+                    session.sendMessage(new Gson().toJson(results));
+                    break;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 推送排名更新
+    public void pushRankingUpdate(String communityId, String period, String type, Date date) {
+        // 获取社区所有用户
+        List<String> userIds = dataStorage.getUserIdsByCommunity(communityId);
+        for (String userId : userIds) {
+            WebSocketSession session = userSessions.get(userId);
+            if (session != null && session.isOpen()) {
+                try {
+                    JsonObject json = new JsonObject();
+                    json.addProperty("type", "ranking_update");
+                    json.addProperty("period", period);
+                    json.addProperty("type", type);
+                    json.addProperty("date", date.getTime());
+                    session.sendMessage(json.toString());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+
+    // 推送预警信息
+    public void pushAlert(String userId, AlertMessage alert) {
+        WebSocketSession session = userSessions.get(userId);
+        if (session != null && session.isOpen()) {
+            try {
+                session.sendMessage(new Gson().toJson(alert));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        // 同时发送短信
+        sendSmsAlert(userId, alert);
+    }
+
+    // 发送短信预警
+    private void sendSmsAlert(String userId, AlertMessage alert) {
+        User user = dataStorage.getUserByPhone(userId);
+        if (user == null) {
+            return;
+        }
+        // 调用短信服务发送预警
+        String message = "【低碳平台】您的家庭" + alert.dataType + "碳排放异常：" + alert.message + "，建议：" + alert.suggestion;
+        callSmsService(user.phone, message);
+    }
+
+    // 调用短信服务
+    private void callSmsService(String phone, String message) {
+        // 实际项目中对接短信API
+        System.out.println("发送短信到" + phone + "：" + message);
+    }
+
+    // 设备数据接收处理
+    public void handleDeviceData(String deviceId, String data) {
+        // 解析设备数据
+        try {
+            JsonObject json = new JsonParser().parse(data).getAsJsonObject();
+            String type = json.get("type").getAsString();
+            double value = json.get("value").getAsDouble();
+            long timestamp = json.get("timestamp").getAsLong();
+
+            // 查找设备对应的用户
+            String userId = getUserIdByDeviceId(deviceId);
+            if (userId == null) {
+                return;
+            }
+
+            // 保存数据
+            FamilyData familyData = new FamilyData();
+            familyData.userId = userId;
+            familyData.dataType = type;
+            familyData.timestamp = new Date(timestamp);
+            familyData.value = value;
+            familyData.isManual = false;
+            dataStorage.saveFamilyData(familyData);
+
+            // 触发分析
+            carbonCalculator.triggerDataAnalysis(userId, familyData.timestamp);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 根据设备ID获取用户ID
+    private String getUserIdByDeviceId(String deviceId) {
+        for (DeviceConnection conn : deviceConnections.values()) {
+            if (conn.deviceId.equals(deviceId)) {
+                return conn.userId;
+            }
+        }
+        return null;
+    }
+}
+
+// 预警提示功能
+class AlertManager {
+    // 预警阈值配置
+    private Map<String, ThresholdConfig> thresholds = new HashMap<>();
+    // 预警记录存储
+    private List<AlertRecord> alertRecords = new CopyOnWriteArrayList<>();
+
+    // 初始化预警阈值
+    public AlertManager() {
+        // 默认阈值配置
+        thresholds.put("electricity", new ThresholdConfig(5.0, 150.0)); // 用电阈值：5-150kg/天
+        thresholds.put("water", new ThresholdConfig(0.5, 20.0)); // 用水阈值：0.5-20kg/天
+        thresholds.put("gas", new ThresholdConfig(1.0, 50.0)); // 用气阈值：1-50kg/天
+        thresholds.put("travel", new ThresholdConfig(0, 30.0)); // 出行阈值：0-30kg/天
+        thresholds.put("total", new ThresholdConfig(10.0, 200.0)); // 总排放阈值：10-200kg/天
+    }
+
+    // 启动监测服务
+    public void startMonitoringService() {
+        System.out.println("预警监测服务启动");
+        // 每小时检查一次异常
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        scheduler.scheduleAtFixedRate(this::checkAllUsersEmission, 0, 1, TimeUnit.HOURS);
+    }
+
+    // 检查所有用户的碳排放
+    private void checkAllUsersEmission() {
+        Date today = new Date();
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(today);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        Date start = cal.getTime();
+
+        // 获取所有用户ID
+        List<String> userIds = dataStorage.getAllUserIds();
+        for (String userId : userIds) {
+            EmissionResult result = dataStorage.getEmissionResult(userId, start);
+            if (result != null) {
+                checkAbnormalEmission(result);
+            }
+        }
+    }
+
+    // 检查碳排放异常
+    public void checkAbnormalEmission(EmissionResult result) {
+        // 检查各项数据
+        checkItemAbnormal(result.userId, "electricity", result.electricity, result.date);
+        checkItemAbnormal(result.userId, "water", result.water, result.date);
+        checkItemAbnormal(result.userId, "gas", result.gas, result.date);
+        checkItemAbnormal(result.userId, "travel", result.travel, result.date);
+        checkItemAbnormal(result.userId, "total", result.total, result.date);
+    }
+
+    // 检查单项数据异常
+    private void checkItemAbnormal(String userId, String type, double value, Date date) {
+        ThresholdConfig config = thresholds.get(type);
+        if (config == null) {
+            return;
+        }
+
+        // 判断是否超出阈值
+        if (value < config.min || value > config.max) {
+            // 生成预警信息
+            AlertMessage alert = new AlertMessage();
+            alert.userId = userId;
+            alert.dataType = type;
+            alert.value = value;
+            alert.thresholdMin = config.min;
+            alert.thresholdMax = config.max;
+            alert.timestamp = date;
+
+            // 分析异常原因
+            if (value < config.min) {
+                alert.message = "低于正常范围，可能存在数据异常";
+            } else {
+                alert.message = "高于正常范围，可能存在过度消耗";
+                // 提供建议
+                alert.suggestion = getSuggestionForType(type);
+            }
+
+            // 保存预警记录
+            AlertRecord record = new AlertRecord();
+            record.alertId = UUID.randomUUID().toString();
+            record.userId = userId;
+            record.dataType = type;
+            record.value = value;
+            record.timestamp = new Date();
+            record.message = alert.message;
+            alertRecords.add(record);
+            dataStorage.saveAlertRecord(record);
+
+            // 推送预警
+            communicationModule.pushAlert(userId, alert);
+        }
+    }
+
+    // 获取对应的建议
+    private String getSuggestionForType(String type) {
+        switch (type) {
+            case "electricity":
+                return "建议减少不必要的用电设备使用，及时关闭电源，使用节能电器";
+            case "water":
+                return "建议检查是否有漏水情况，养成节约用水的习惯，合理安排用水";
+            case "gas":
+                return "建议合理使用燃气设备，避免不必要的能源浪费";
+            case "travel":
+                return "建议优先选择公共交通、自行车或步行，减少私家车使用";
+            case "total":
+                return "建议整体优化家庭用能习惯，减少各项碳排放";
+            default:
+                return "建议检查家庭低碳行为，优化能源使用";
+        }
+    }
+
+    // 动态调整阈值
+    public void adjustThresholds(String type, double min, double max) {
+        thresholds.put(type, new ThresholdConfig(min, max));
+        dataStorage.saveThresholdConfig(type, min, max);
+    }
+
+    // 获取历史预警记录
+    public List<AlertRecord> getAlertHistory(String token, Date start, Date end) {
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return Collections.emptyList();
+        }
+
+        List<AlertRecord> result = new ArrayList<>();
+        for (AlertRecord record : alertRecords) {
+            if (record.userId.equals(user.phone) &&
+                record.timestamp.after(start) &&
+                record.timestamp.before(end)) {
+                result.add(record);
+            }
+        }
+        return result;
+    }
+}
+
+// 数据存储功能
+class DataStorage {
+    // 数据库连接
+    private DatabaseConnection dbConnection;
+
+    // 初始化数据库连接
+    public void initDatabaseConnection() {
+        // 实际项目中为真实数据库连接
+        dbConnection = new DatabaseConnection();
+        System.out.println("数据库连接初始化完成");
+    }
+
+    // 保存用户信息
+    public void saveUser(User user) {
+        dbConnection.executeUpdate("INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?)",
+            user.phone, user.password, user.familyName, user.familySize,
+            user.communityId, user.registrationTime, user.lastLoginTime);
+    }
+
+    // 更新用户登录时间
+    public void updateUserLoginTime(String phone, Date lastLoginTime) {
+        dbConnection.executeUpdate("UPDATE users SET last_login_time = ? WHERE phone = ?",
+            lastLoginTime, phone);
+    }
+
+    // 更新用户信息
+    public void updateUser(User user) {
+        dbConnection.executeUpdate("UPDATE users SET family_name = ?, family_size = ?, community_id = ? WHERE phone = ?",
+            user.familyName, user.familySize, user.communityId, user.phone);
+    }
+
+    // 加载所有用户
+    public List<User> loadAllUsers() {
+        List<User> users = new ArrayList<>();
+        // 从数据库查询用户
+        List<Map<String, Object>> results = dbConnection.executeQuery("SELECT * FROM users");
+        for (Map<String, Object> row : results) {
+            User user = new User();
+            user.phone = (String) row.get("phone");
+            user.password = (String) row.get("password");
+            user.familyName = (String) row.get("family_name");
+            user.familySize = (int) row.get("family_size");
+            user.communityId = (String) row.get("community_id");
+            user.registrationTime = (Date) row.get("registration_time");
+            user.lastLoginTime = (Date) row.get("last_login_time");
+            users.add(user);
+        }
+        return users;
+    }
+
+    // 根据手机号获取用户
+    public User getUserByPhone(String phone) {
+        List<Map<String, Object>> results = dbConnection.executeQuery("SELECT * FROM users WHERE phone = ?", phone);
+        if (results.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = results.get(0);
+        User user = new User();
+        user.phone = (String) row.get("phone");
+        user.password = (String) row.get("password");
+        user.familyName = (String) row.get("family_name");
+        user.familySize = (int) row.get("family_size");
+        user.communityId = (String) row.get("community_id");
+        user.registrationTime = (Date) row.get("registration_time");
+        user.lastLoginTime = (Date) row.get("last_login_time");
+        return user;
+    }
+
+    // 保存家庭数据
+    public void saveFamilyData(FamilyData data) {
+        dbConnection.executeUpdate("INSERT INTO family_data VALUES (?, ?, ?, ?, ?, ?)",
+            data.id, data.userId, data.dataType, data.timestamp, data.value, data.isManual);
+    }
+
+    // 根据日期获取家庭数据
+    public List<FamilyData> getFamilyDataByDate(String userId, Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        Date start = cal.getTime();
+        cal.add(Calendar.DATE, 1);
+        Date end = cal.getTime();
+
+        List<FamilyData> dataList = new ArrayList<>();
+        List<Map<String, Object>> results = dbConnection.executeQuery(
+            "SELECT * FROM family_data WHERE user_id = ? AND timestamp >= ? AND timestamp < ?",
+            userId, start, end);
+
+        for (Map<String, Object> row : results) {
+            FamilyData data = new FamilyData();
+            data.id = (String) row.get("id");
+            data.userId = (String) row.get("user_id");
+            data.dataType = (String) row.get("data_type");
+            data.timestamp = (Date) row.get("timestamp");
+            data.value = (double) row.get("value");
+            data.isManual = (boolean) row.get("is_manual");
+            dataList.add(data);
+        }
+        return dataList;
+    }
+
+    // 保存碳排放计算结果
+    public void saveEmissionResult(EmissionResult result) {
+        dbConnection.executeUpdate(
+            "INSERT INTO emission_results VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            result.userId, result.date, result.electricity, result.water,
+            result.gas, result.travel, result.total, result.perCapita);
+    }
+
+    // 获取指定日期的碳排放结果
+    public EmissionResult getEmissionResult(String userId, Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        cal.set(Calendar.SECOND, 0);
+        Date start = cal.getTime();
+        cal.add(Calendar.DATE, 1);
+        Date end = cal.getTime();
+
+        List<Map<String, Object>> results = dbConnection.executeQuery(
+            "SELECT * FROM emission_results WHERE user_id = ? AND date >= ? AND date < ?",
+            userId, start, end);
+
+        if (results.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = results.get(0);
+        EmissionResult result = new EmissionResult();
+        result.userId = (String) row.get("user_id");
+        result.date = (Date) row.get("date");
+        result.electricity = (double) row.get("electricity");
+        result.water = (double) row.get("water");
+        result.gas = (double) row.get("gas");
+        result.travel = (double) row.get("travel");
+        result.total = (double) row.get("total");
+        result.perCapita = (double) row.get("per_capita");
+        return result;
+    }
+
+    // 获取时间段内的碳排放结果
+    public List<EmissionResult> getEmissionResultsByPeriod(String userId, Date start, Date end) {
+        List<EmissionResult> results = new ArrayList<>();
+        List<Map<String, Object>> rows = dbConnection.executeQuery(
+            "SELECT * FROM emission_results WHERE user_id = ? AND date >= ? AND date <= ?",
+            userId, start, end);
+
+        for (Map<String, Object> row : rows) {
+            EmissionResult result = new EmissionResult();
+            result.userId = (String) row.get("user_id");
+            result.date = (Date) row.get("date");
+            result.electricity = (double) row.get("electricity");
+            result.water = (double) row.get("water");
+            result.gas = (double) row.get("gas");
+            result.travel = (double) row.get("travel");
+            result.total = (double) row.get("total");
+            result.perCapita = (double) row.get("per_capita");
+            results.add(result);
+        }
+        return results;
+    }
+
+    // 保存社区平均数据
+    public void saveCommunityAverage(CommunityAverage avg) {
+        dbConnection.executeUpdate(
+            "INSERT INTO community_averages VALUES (?, ?, ?)",
+            avg.communityId, avg.date, avg.total);
+    }
+
+    // 获取社区日平均数据
+    public CommunityAverage getCommunityDailyAverage(String communityId, Date date) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
+        Date start = cal.getTime();
+        cal.add(Calendar.DATE, 1);
+        Date end = cal.getTime();
+
+        List<Map<String, Object>> results = dbConnection.executeQuery(
+            "SELECT * FROM community_averages WHERE community_id = ? AND date >= ? AND date < ?",
+            communityId, start, end);
+
+        if (results.isEmpty()) {
+            return null;
+        }
+        Map<String, Object> row = results.get(0);
+        CommunityAverage avg = new CommunityAverage();
+        avg.communityId = (String) row.get("community_id");
+        avg.date = (Date) row.get("date");
+        avg.total = (double) row.get("total");
+        return avg;
+    }
+
+    // 保存排名结果
+    public void saveRankingResult(RankingResult ranking) {
+        // 先删除同的旧排名
+        dbConnection.executeUpdate(
+            "DELETE FROM rankings WHERE community_id = ? AND period = ? AND type = ? AND date = ?",
+            ranking.communityId, ranking.period, ranking.type, ranking.date);
+
+        // 插入新排名
+        for (RankRecord record : ranking.rankList) {
+            dbConnection.executeUpdate(
+                "INSERT INTO rankings VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ranking.communityId, ranking.date, ranking.period, ranking.type,
+                record.userId, record.rank, record.value);
+        }
+    }
+
+    // 获取排名结果
+    public RankingResult getRankingResult(String communityId, Date date, String period, String type) {
+        List<Map<String, Object>> results = dbConnection.executeQuery(
+            "SELECT * FROM rankings WHERE community_id = ? AND date = ? AND period = ? AND type = ? ORDER BY rank",
+            communityId, date, period, type);
+
+        if (results.isEmpty()) {
+            return null;
+        }
+
+        RankingResult ranking = new RankingResult();
+        ranking.communityId = communityId;
+        ranking.date = date;
+        ranking.period = period;
+        ranking.type = type;
+        ranking.rankList = new ArrayList<>();
+
+        for (Map<String, Object> row : results) {
+            RankRecord record = new RankRecord();
+            record.userId = (String) row.get("user_id");
+            record.rank = (int) row.get("rank");
+            record.value = (double) row.get("value");
+            ranking.rankList.add(record);
+        }
+
+        return ranking;
+    }
+
+    // 保存预警记录
+    public void saveAlertRecord(AlertRecord record) {
+        dbConnection.executeUpdate(
+            "INSERT INTO alerts VALUES (?, ?, ?, ?, ?, ?)",
+            record.alertId, record.userId, record.dataType,
+            record.value, record.timestamp, record.message);
+    } 
+    public List<String> getUserIdsByCommunity(String communityId) {
+        List<String> userIds = new ArrayList<>();
+        List<Map<String, Object>> results = dbConnection.executeQuery(
+            "SELECT phone FROM users WHERE community_id = ?", communityId);
+        for (Map<String, Object> row : results) {
+            userIds.add((String) row.get("phone"));
+        }
+        return userIds;
+    }
+
+    public List<String> getAllUserIds() {
+        List<String> userIds = new ArrayList<>();
+        List<Map<String, Object>> results = dbConnection.executeQuery("SELECT phone FROM users");
+        for (Map<String, Object> row : results) {
+            userIds.add((String) row.get("phone"));
+        }
+        return userIds;
+    }
+
+    public void saveAbnormalData(AbnormalData data) {
+        dbConnection.executeUpdate(
+            "INSERT INTO abnormal_data VALUES (?, ?, ?, ?, ?, ?)",
+            data.id, data.userId, data.dataType, data.timestamp, data.value, data.reason);
+    }
+
+    public void saveThresholdConfig(String type, double min, double max) {
+        dbConnection.executeUpdate(
+            "INSERT INTO thresholds VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE min_value = ?, max_value = ?",
+            type, min, max, min, max);
+    }
+
+    public void saveEmissionComparison(EmissionComparison comparison) {
+        dbConnection.executeUpdate(
+            "INSERT INTO emission_comparisons VALUES (?, ?, ?, ?, ?)",
+            comparison.userId, comparison.date, comparison.communityAvgTotal,
+            comparison.totalDiff, comparison.totalDiffRate);
+    }
+
+    public List<Community> loadAllCommunities() {
+        List<Community> communities = new ArrayList<>();
+        List<Map<String, Object>> results = dbConnection.executeQuery("SELECT * FROM communities");
+        for (Map<String, Object> row : results) {
+            Community community = new Community();
+            community.id = (String) row.get("id");
+            community.name = (String) row.get("name");
+            community.coverage = (String) row.get("coverage");
+            communities.add(community);
+        }
+        return communities;
+    }
+}
+
+// 用户界面交互
+class UserInterface {
+    private Scanner scanner = new Scanner(System.in);
+    private String currentToken = null;
+
+    // 显示主菜单
+    public void showMainMenu() {
+        System.out.println("\n===== 家庭低碳行为管理平台 =====");
+        if (currentToken == null || !userManager.validateToken(currentToken)) {
+            System.out.println(“登录");
+            System.out.println(“注册");
+        } else {
+            System.out.println(“手动录入数据");
+            System.out.println(“查询碳排放数据");
+            System.out.println(“查询社区排名");
+            System.out.println(“修改家庭信息");
+            System.out.println(“退出登录");
+        }
+        System.out.println(“退出系统");
+        System.out.print("请选择操作: ");
+    }
+
+    // 处理登录
+    public void handleLogin() {
+        System.out.print("请输入手机号: ");
+        String phone = scanner.nextLine();
+        System.out.print("请输入密码: ");
+        String password = scanner.nextLine();
+
+        String token = userManager.login(phone, password);
+        if (token != null) {
+            currentToken = token;
+            System.out.println("登录成功！");
+            User user = userManager.getUserByToken(token);
+            System.out.println("欢迎回来，" + user.familyName + "家庭");
+        } else {
+            System.out.println("登录，手机号或密码");
+        }
+    }
+
+    // 处理注册
+    public void handleRegistration() {
+        System.out.print("请输入手机号: ");
+        String phone = scanner.nextLine();
+        System.out.print("请输入密码: ");
+        String password = scanner.nextLine();
+        System.out.print("请输入家庭名称: ");
+        String familyName = scanner.nextLine();
+        System.out.print("请输入家庭人数: ");
+        int familySize = scanner.nextInt();
+        scanner.nextLine(); // 消费换行
+        System.out.print("请输入所属社区ID: ");
+        String communityId = scanner.nextLine();
+
+        boolean success = userManager.register(phone, password, familyName, familySize, communityId);
+        if (success) {
+            System.out.println("注册成功，请登录");
+        } else {
+            System.out.println("注册，手机号已被注册");
+        }
+    }
+
+    // 处理数据录入
+    public void handleDataEntry() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 数据录入 -----");
+        System.out.println(“出行数据");
+        System.out.println(“垃圾分数据");
+        System.out.print("请选择数据: ");
+        int type = scanner.nextInt();
+        scanner.nextLine();
+
+        if (type == 1) {
+            System.out.println("出行方式: 1.步行 2.自行车 3.公交 4.地铁 5.私家车");
+            System.out.print("请选择: ");
+            int travelType = scanner.nextInt();
+            scanner.nextLine();
+            System.out.print("请输入里程(公里): ");
+            double mileage = scanner.nextDouble();
+            scanner.nextLine();
+
+            String typeStr = "travel";
+            // 额外存储出行方式
+            boolean success = dataCollector.manualDataEntry(currentToken, typeStr, mileage, new Date());
+            if (success) {
+                System.out.println("出行数据录入成功");
+            } else {
+                System.out.println("数据录入，请检查输入");
+            }
+        } else if (type == 2) {
+            System.out.print("请输入可回收垃圾重量(公斤): ");
+            double weight = scanner.nextDouble();
+            scanner.nextLine();
+
+            boolean success = dataCollector.manualDataEntry(currentToken, "garbage", weight, new Date());
+            if (success) {
+                System.out.println("垃圾分数据录入成功");
+            } else {
+                System.out.println("数据录入，请检查输入");
+            }
+        }
+    }
+
+    // 处理数据查询
+    public void handleDataQuery() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 数据查询 -----");
+        System.out.print("请输入查询开始日期(yyyy-MM-dd): ");
+        String startStr = scanner.nextLine();
+        System.out.print("请输入查询结束日期(yyyy-MM-dd): ");
+        String endStr = scanner.nextLine();
+
+        try {
+            Date start = new SimpleDateFormat("yyyy-MM-dd").parse(startStr);
+            Date end = new SimpleDateFormat("yyyy-MM-dd").parse(endStr);
+            List<EmissionResult> results = carbonCalculator.getHistoricalEmissions(currentToken, start, end);
+
+            if (results.isEmpty()) {
+                System.out.println("没有查询到数据");
+                return;
+            }
+
+            System.out.println("日期\t\t总碳排放(kg)\t人均碳排放(kg)\t用电\t用水\t用气\t出行");
+            for (EmissionResult result : results) {
+                System.out.printf("%s\t%.2f\t\t%.2f\t\t%.2f\t%.2f\t%.2f\t%.2f\n",
+                    new SimpleDateFormat("yyyy-MM-dd").format(result.date),
+                    result.total, result.perCapita,
+                    result.electricity, result.water, result.gas, result.travel);
+            }
+        } catch (ParseException e) {
+            System.out.println("日期格式");
+        }
+    }
+
+    // 处理排名查询
+    public void handleRankingQuery() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 排名查询 -----");
+        System.out.println(“日排名");
+        System.out.println(“周排名");
+        System.out.println(“月排名");
+        System.out.print("请选择排名周期: ");
+        int periodChoice = scanner.nextInt();
+        scanner.nextLine();
+
+        System.out.println(“总碳排放量排名");
+        System.out.println(“人均碳排放量排名");
+        System.out.print("请选择排名: ");
+        int typeChoice = scanner.nextInt();
+        scanner.nextLine();
+
+        String period = periodChoice == 1 ? "daily" : (periodChoice == 2 ? "weekly" : "monthly");
+        String type = typeChoice ==   "per_capita";
+
+        List<RankRecord> ranking = rankingManager.queryRanking(currentToken, period, type);
+        if (ranking.isEmpty()) {
+            System.out.println("暂无排名数据");
+            return;
+        }
+
+        System.out.println("\n----- " + (periodChoice == 1 ? "日" : (periodChoice == 2 ? "周" : "月")) + "排名 -----");
+        System.out.println("排名\t家庭名称\t" + (typeChoice == 1 ? "总碳排放(kg)" : "人均碳排放(kg)"));
+        User currentUser = userManager.getUserByToken(currentToken);
+        for (RankRecord record : ranking) {
+            User user = dataStorage.getUserByPhone(record.userId);
+            String familyName = user != null ? user.familyName : "未知家庭";
+            String highlight = record.userId.equals(currentUser.phone) ? "★" : "";
+            System.out.printf("%d\t%s%s\t%.2f\n",
+                record.rank, familyName, highlight, record.value);
+        }
+    }
+
+    // 处理信息修改
+    public void handleInfoModification() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        User user = userManager.getUserByToken(currentToken);
+        System.out.println("\n----- 修改家庭信息 -----");
+        System.out.println("当前信息:");
+        System.out.println("家庭名称: " + user.familyName);
+        System.out.println("家庭人数: " + user.familySize);
+        System.out.println("所属社区ID: " + user.communityId);
+
+        System.out.print("是否修改家庭名称? (y/n): ");
+        String changeName = scanner.nextLine();
+        String newName = null;
+        if ("y".equalsIgnoreCase(changeName)) {
+            System.out.print("请输入新的家庭名称: ");
+            newName = scanner.nextLine();
+        }
+
+        System.out.print("是否修改家庭人数? (y/n): ");
+        String changeSize = scanner.nextLine();
+        int newSize = -1;
+        if ("y".equalsIgnoreCase(changeSize)) {
+            System.out.print("请输入新的家庭人数: ");
+            newSize = scanner.nextInt();
+            scanner.nextLine();
+        }
+
+        System.out.print("是否修改所属社区? (y/n): ");
+        String changeCommunity = scanner.nextLine();
+        String newCommunity = null;
+        if ("y".equalsIgnoreCase(changeCommunity)) {
+            System.out.print("请输入新的社区ID: ");
+            newCommunity = scanner.nextLine();
+        }
+
+        boolean success = userManager.updateUserInfo(currentToken,
+            newName != null ? newName : user.familyName,
+            newSize > 0 ? newSize : user.familySize,
+            newCommunity != null ? newCommunity : user.communityId);
+
+        if (success) {
+            System.out.println("信息修改成功");
+        } else {
+            System.out.println("信息修改");
+        }
+    }
+
+    // 检查登录状态
+    private boolean checkLogin() {
+        if (currentToken == null || !userManager.validateToken(currentToken)) {
+            System.out.println("请先登录");
+            handleLogin();
+            return currentToken != null && userManager.validateToken(currentToken);
+        }
+        return true;
+    }
+
+    // 处理数据补录
+    public void handleDataReentry() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 数据补录 -----");
+        System.out.println(“用电数据");
+        System.out.println(“用水数据");
+        System.out.println(“用气数据");
+        System.out.println(“出行数据");
+        System.out.println(“垃圾分数据");
+        System.out.print("请选择补录数据: ");
+        int typeChoice = scanner.nextInt();
+        scanner.nextLine();
+
+        System.out.print("请输入补录日期(yyyy-MM-dd): ");
+        String dateStr = scanner.nextLine();
+        System.out.print("请输入数据值: ");
+        double value = scanner.nextDouble();
+        scanner.nextLine();
+
+        String type = "";
+        switch (typeChoice) {
+            case 1:
+                type = "electricity";
+                break;
+            case 2:
+                type = "water";
+                break;
+            case 3:
+                type = "gas";
+                break;
+            case 4:
+                type = "travel_mileage";
+                break;
+            case 5:
+                type = "garbage_recycle";
+                break;
+            default:
+                System.out.println("无效的选择");
+                return;
+        }
+
+        try {
+            Date date = new SimpleDateFormat("yyyy-MM-dd").parse(dateStr);
+            boolean success = dataCollector.补录数据(currentToken, type, value, date);
+            if (success) {
+                System.out.println("数据补录成功");
+            } else {
+                System.out.println("数据补录，可能超出补录时间范围或数据无效");
+            }
+        } catch (ParseException e) {
+            System.out.println("日期格式");
+        }
+    }
+
+    // 处理预警记录查询
+    public void handleAlertQuery() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 预警记录查询 -----");
+        System.out.print("请输入查询开始日期(yyyy-MM-dd): ");
+        String startStr = scanner.nextLine();
+        System.out.print("请输入查询结束日期(yyyy-MM-dd): ");
+        String endStr = scanner.nextLine();
+
+        try {
+            Date start = new SimpleDateFormat("yyyy-MM-dd").parse(startStr);
+            Date end = new SimpleDateFormat("yyyy-MM-dd").parse(endStr);
+            List<AlertRecord> alerts = alertManager.getAlertHistory(currentToken, start, end);
+
+            if (alerts.isEmpty()) {
+                System.out.println("该时间段内无预警记录");
+                return;
+            }
+
+            System.out.println("时间\t\t数据\t数值\t预警信息");
+            for (AlertRecord alert : alerts) {
+                System.out.printf("%s\t%s\t%.2f\t%s\n",
+                    new SimpleDateFormat("yyyy-MM-dd HH:mm").format(alert.timestamp),
+                    alert.dataType, alert.value, alert.message);
+            }
+        } catch (ParseException e) {
+            System.out.println("日期格式");
+        }
+    }
+}
+
+// 设备
+class ElectricityMeterInterface implements DeviceInterface {
+    private Map<String, String> userDeviceMap = new HashMap<>(); // 用户ID与设备ID映射
+
+    @Override
+    public boolean registerDevice(String userId, String deviceId) {
+        userDeviceMap.put(deviceId, userId);
+        System.out.println("电表设备注册成功: " + deviceId + " -> " + userId);
+        return true;
+    }
+
+    @Override
+    public List<DeviceData> collectData() {
+        List<DeviceData> dataList = new ArrayList<>();
+        // 从电表采集数据
+        for (Map.Entry<String, String> entry : userDeviceMap.entrySet()) {
+            DeviceData data = new DeviceData();
+            data.deviceId = entry.getKey();
+            data.userId = entry.getValue();
+            data.timestamp = new Date();
+            data.value = Math.random() * 10 + 1; // 随机生成1-11度电数据
+            dataList.add(data);
+        }
+        return dataList;
+    }
+}
+
+class WaterMeterInterface implements DeviceInterface {
+    private Map<String, String> userDeviceMap = new HashMap<>();
+
+    @Override
+    public boolean registerDevice(String userId, String deviceId) {
+        userDeviceMap.put(deviceId, userId);
+        System.out.println("水表设备注册成功: " + deviceId + " -> " + userId);
+        return true;
+    }
+
+    @Override
+    public List<DeviceData> collectData() {
+        List<DeviceData> dataList = new ArrayList<>();
+        // 从水表采集数据
+        for (Map.Entry<String, String> entry : userDeviceMap.entrySet()) {
+            DeviceData data = new DeviceData();
+            data.deviceId = entry.getKey();
+            data.userId = entry.getValue();
+            data.timestamp = new Date();
+            data.value = Math.random() * 3 + 0.5; // 随机生成0.5-3.5立方米水数据
+            dataList.add(data);
+        }
+        return dataList;
+    }
+}
+
+class GasMeterInterface implements DeviceInterface {
+    private Map<String, String> userDeviceMap = new HashMap<>();
+
+    @Override
+    public boolean registerDevice(String userId, String deviceId) {
+        userDeviceMap.put(deviceId, userId);
+        System.out.println("气表设备注册成功: " + deviceId + " -> " + userId);
+        return true;
+    }
+
+    @Override
+    public List<DeviceData> collectData() {
+        List<DeviceData> dataList = new ArrayList<>();
+        // 从气表采集数据
+        for (Map.Entry<String, String> entry : userDeviceMap.entrySet()) {
+            DeviceData data = new DeviceData();
+            data.deviceId = entry.getKey();
+            data.userId = entry.getValue();
+            data.timestamp = new Date();
+            data.value = Math.random() * 5 + 1; // 随机生成1-6立方米气数据
+            dataList.add(data);
+        }
+        return dataList;
+    }
+}
+
+// 数据模型
+class User {
+    String phone;
+    String password;
+    String familyName;
+    int familySize;
+    String communityId;
+    Date registrationTime;
+    Date lastLoginTime;
+}
+
+class FamilyData {
+    String id = UUID.randomUUID().toString();
+    String userId;
+    String dataType;
+    Date timestamp;
+    double value;
+    boolean isManual;
+    Object extraData; // 存储额外信息，如出行方式
+}
+
+class DeviceData {
+    String deviceId;
+    String userId;
+    Date timestamp;
+    double value;
+}
+
+class AbnormalData {
+    String id = UUID.randomUUID().toString();
+    String userId;
+    String dataType;
+    Date timestamp;
+    double value;
+    String reason;
+}
+
+class EmissionResult {
+    String userId;
+    Date date;
+    double electricity;
+    double water;
+    double gas;
+    double travel;
+    double total;
+    double perCapita;
+}
+
+class CommunityAverage {
+    String communityId;
+    Date date;
+    double total;
+}
+
+class EmissionComparison {
+    String userId;
+    Date date;
+    double communityAvgTotal;
+    double totalDiff;
+    double totalDiffRate;
+}
+
+class Community {
+    String id;
+    String name;
+    String coverage;
+}
+
+class RankingResult {
+    String communityId;
+    Date date;
+    String period; // daily, weekly, monthly
+    String type; // total, per_capita
+    List<RankRecord> rankList;
+}
+
+class RankRecord {
+    String userId;
+    int rank;
+    double value;
+}
+
+class RankItem {
+    String userId;
+    double totalEmission;
+    double perCapitaEmission;
+}
+
+class AlertMessage {
+    String userId;
+    String dataType;
+    double value;
+    double thresholdMin;
+    double thresholdMax;
+    Date timestamp;
+    String message;
+    String suggestion;
+}
+
+class AlertRecord {
+    String alertId;
+    String userId;
+    String dataType;
+    double value;
+    Date timestamp;
+    String message;
+}
+
+class ThresholdConfig {
+    double min;
+    double max;
+
+    ThresholdConfig(double min, double max) {
+        this.min = min;
+        this.max = max;
+    }
+}
+
+class ComparisonResult {
+    Date date;
+    List<ComparisonItem> comparisonItems;
+}
+
+class ComparisonItem {
+    String familyName;
+    double totalEmission;
+    double electricity;
+    double water;
+    double gas;
+    double travel;
+    double perCapita;
+}
+
+class DeviceConnection {
+    String deviceId;
+    String userId;
+    Date lastConnected;
+}
+
+// 设备
+interface DeviceInterface {
+    boolean registerDevice(String userId, String deviceId);
+    List<DeviceData> collectData();
+}
+
+// 数据库连接
+class DatabaseConnection {
+    // 执行更新操作
+    public void executeUpdate(String sql, Object... params) {
+        // 实际项目中为数据库更新操作
+        System.out.println("执行SQL: " + sql + "，参数: " + Arrays.toString(params));
+    }
+
+    // 执行查询操作
+    public List<Map<String, Object>> executeQuery(String sql, Object... params) {
+        // 实际项目中为数据库查询操作，此处返回空列表
+        return new ArrayList<>();
+    }
+}
+
+// WebSocket相关
+class WebSocketServer {
+    private InetSocketAddress address;
+
+    public WebSocketServer(InetSocketAddress address) {
+        this.address = address;
+    }
+
+    public void start() {
+        System.out.println("WebSocket服务器启动在端口: " + address.getPort());
+    }
+
+    public void onOpen(WebSocketSession session, ClientHandshake handshake) {}
+    public void onClose(WebSocketSession session, int statusCode, String reason, boolean remote) {}
+    public void onMessage(WebSocketSession session, String message) {}
+    public void onError(WebSocketSession session, Exception ex) {}
+    public void onStart() {}
+}
+
+class WebSocketSession {
+    private boolean open = true;
+
+    public boolean isOpen() {
+        return open;
+    }
+
+    public void sendMessage(String message) throws IOException {
+        System.out.println("发送WebSocket消息: " + message);
+    }
+}
+
+class ClientHandshake {
+    public String getFieldValue(String field) {
+        return null;
+    }
+}
+
+// 通讯的HTTP请求处理方法
+class CommunicationModule {
+    // 处理数据补录请求
+    private void handleDataReentryRequest(HttpExchange exchange) throws IOException {
+        if ("POST".equals(exchange.getRequestMethod())) {
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject json = new JsonParser().parse(requestBody).getAsJsonObject();
+            String token = json.get("token").getAsString();
+            String type = json.get("type").getAsString();
+            double value = json.get("value").getAsDouble();
+            long timestamp = json.get("timestamp").getAsLong();
+
+            boolean success = dataCollector.补录数据(token, type, value, new Date(timestamp));
+            JsonObject response = new JsonObject();
+            response.addProperty("success", success);
+            sendHttpResponse(exchange, response.toString());
+        } else {
+            exchange.sendResponseHeaders(405, -1);
+        }
+    }
+
+    // 处理预警查询请求
+    private void handleAlertQueryRequest(HttpExchange exchange) throws IOException {
+        if ("GET".equals(exchange.getRequestMethod())) {
+            Map<String, String> params = parseQueryParams(exchange.getRequestURI().getQuery());
+            String token = params.get("token");
+            long start = Long.parseLong(params.get("start"));
+            long end = Long.parseLong(params.get("end"));
+
+            List<AlertRecord> alerts = alertManager.getAlertHistory(token, new Date(start), new Date(end));
+            String response = new Gson().toJson(alerts);
+            sendHttpResponse(exchange, response);
+        } else {
+            exchange.sendResponseHeaders(405, -1);
+        }
+    }
+
+    // 解析查询参数
+    private Map<String, String> parseQueryParams(String query) {
+        Map<String, String> params = new HashMap<>();
+        if (query == null) return params;
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split("=");
+            if (keyValue.length == 2) {
+                params.put(keyValue[0], keyValue[1]);
+            }
+        }
+        return params;
+    }
+
+    // 补充设置HTTP端点
+    private void setupHttpEndpoints() {
+        httpServer.createContext("/data/reentry", this::handleDataReentryRequest);
+        httpServer.createContext("/alerts/query", this::handleAlertQueryRequest);
+        httpServer.createContext("/comparison/families", this::handleFamilyComparisonRequest);
+    }
+
+    // 处理家庭对比请求
+    private void handleFamilyComparisonRequest(HttpExchange exchange) throws IOException {
+        if ("POST".equals(exchange.getRequestMethod())) {
+            String requestBody = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            JsonObject json = new JsonParser().parse(requestBody).getAsJsonObject();
+            String token = json.get("token").getAsString();
+            JsonArray targetIds = json.getAsJsonArray("targetIds");
+
+            List<String> targetUserIds = new ArrayList<>();
+            for (JsonElement elem : targetIds) {
+                targetUserIds.add(elem.getAsString());
+            }
+
+            ComparisonResult result = rankingManager.compareFamilies(token, targetUserIds);
+            String response = new Gson().toJson(result);
+            sendHttpResponse(exchange, response);
+        } else {
+            exchange.sendResponseHeaders(405, -1);
+        }
+    }
+}
+
+// 数据存储方法
+class DataStorage {
+    // 获取社区所有家庭的碳排放数据（用于排名计算）
+    public List<EmissionResult> getCommunityEmissionData(String communityId, Date start, Date end) {
+        List<EmissionResult> results = new ArrayList<>();
+        List<String> userIds = getUserIdsByCommunity(communityId);
+        for (String userId : userIds) {
+            List<EmissionResult> userResults = getEmissionResultsByPeriod(userId, start, end);
+            results.addAll(userResults);
+        }
+        return results;
+    }
+
+    // 获取用户的异常数据记录
+    public List<AbnormalData> getUserAbnormalData(String userId, Date start, Date end) {
+        List<AbnormalData> dataList = new ArrayList<>();
+        List<Map<String, Object>> rows = dbConnection.executeQuery(
+            "SELECT * FROM abnormal_data WHERE user_id = ? AND timestamp >= ? AND timestamp <= ?",
+            userId, start, end);
+
+        for (Map<String, Object> row : rows) {
+            AbnormalData data = new AbnormalData();
+            data.id = (String) row.get("id");
+            data.userId = (String) row.get("user_id");
+            data.dataType = (String) row.get("data_type");
+            data.timestamp = (Date) row.get("timestamp");
+            data.value = (double) row.get("value");
+            data.reason = (String) row.get("reason");
+            dataList.add(data);
+        }
+        return dataList;
+    }
+
+    // 批量更新碳排放数据
+    public void batchUpdateEmissionResults(List<EmissionResult> results) {
+        for (EmissionResult result : results) {
+            saveEmissionResult(result);
+        }
+    }
+
+    // 获取社区的所有排名数据
+    public List<RankingResult> getCommunityRankings(String communityId, String period) {
+        List<RankingResult> rankings = new ArrayList<>();
+        List<Map<String, Object>> rows = dbConnection.executeQuery(
+            "SELECT DISTINCT date, type FROM rankings WHERE community_id = ? AND period = ?",
+            communityId, period);
+
+        for (Map<String, Object> row : rows) {
+            Date date = (Date) row.get("date");
+            String type = (String) row.get("type");
+            RankingResult ranking = getRankingResult(communityId, date, period, type);
+            if (ranking != null) {
+                rankings.add(ranking);
+            }
+        }
+        return rankings;
+    }
+}
+
+// 预警方法
+class AlertManager {
+    // 手动触发特定用户的预警检查
+    public void checkUserEmission(String userId) {
+        Date today = new Date();
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(today);
+        cal.set(Calendar.HOUR_OF_DAY, 0);
+        Date start = cal.getTime();
+
+        EmissionResult result = dataStorage.getEmissionResult(userId, start);
+        if (result != null) {
+            checkAbnormalEmission(result);
+        }
+    }
+
+    // 获取特定的预警阈值
+    public ThresholdConfig getThresholdByType(String type) {
+        return thresholds.get(type);
+    }
+
+    // 批量检查多个用户的碳排放
+    public void batchCheckEmissions(List<String> userIds) {
+        for (String userId : userIds) {
+            checkUserEmission(userId);
+        }
+    }
+}
+
+// 排名方法
+class RankingManager {
+    // 获取家庭在社区中的历史排名变化
+    public List<RankRecord> getFamilyRankHistory(String token, String period, int count) {
+        User user = userManager.getUserByToken(token);
+        if (user == null || user.communityId == null) {
+            return Collections.emptyList();
+        }
+
+        List<RankRecord> history = new ArrayList<>();
+        Calendar cal = Calendar.getInstance();
+        Date currentDate = getPeriodStartDate(period);
+
+        for (int i = 0; i < count; i++) {
+            RankingResult ranking = dataStorage.getRankingResult(
+                user.communityId, currentDate, period, "total");
+            if (ranking != null) {
+                for (RankRecord record : ranking.rankList) {
+                    if (record.userId.equals(user.phone)) {
+                        history.add(record);
+                        break;
+                    }
+                }
+            }
+
+            // 计算上一个周期的日期
+            if ("daily".equals(period)) {
+                cal.setTime(currentDate);
+                cal.add(Calendar.DATE, -1);
+                currentDate = cal.getTime();
+            } else if ("weekly".equals(period)) {
+                cal.setTime(currentDate);
+                cal.add(Calendar.DATE, -7);
+                currentDate = cal.getTime();
+            } else if ("monthly".equals(period)) {
+                cal.setTime(currentDate);
+                cal.add(Calendar.MONTH, -1);
+                currentDate = cal.getTime();
+            }
+        }
+
+        return history;
+    }
+
+    // 生成社区低碳报告（按周期）
+    public CommunityReport generateCommunityReport(String communityId, String period, Date date) {
+        CommunityReport report = new CommunityReport();
+        report.communityId = communityId;
+        report.period = period;
+        report.date = date;
+
+        // 获取社区信息
+        Community community = dataStorage.loadAllCommunities().stream()
+            .filter(c -> c.id.equals(communityId))
+            .findFirst().orElse(null);
+        report.communityName = community != null ? community.name : "未知社区";
+
+        // 计算日期范围
+        Date start = date;
+        Date end = date;
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(date);
+        if ("weekly".equals(period)) {
+            cal.add(Calendar.DATE, 6);
+            end = cal.getTime();
+        } else if ("monthly".equals(period)) {
+            cal.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH));
+            end = cal.getTime();
+        }
+
+        // 获取社区碳排放数据
+        List<EmissionResult> results = dataStorage.getCommunityEmissionData(communityId, start, end);
+        if (results.isEmpty()) {
+            return report;
+        }
+
+        // 计算平均值
+        double totalAvg = results.stream().mapToDouble(r -> r.total).average().orElse(0);
+        double electricityAvg = results.stream().mapToDouble(r -> r.electricity).average().orElse(0);
+        double waterAvg = results.stream().mapToDouble(r -> r.water).average().orElse(0);
+        double gasAvg = results.stream().mapToDouble(r -> r.gas).average().orElse(0);
+        double travelAvg = results.stream().mapToDouble(r -> r.travel).average().orElse(0);
+
+        report.averageTotal = totalAvg;
+        report.averageElectricity = electricityAvg;
+        report.averageWater = waterAvg;
+        report.averageGas = gasAvg;
+        report.averageTravel = travelAvg;
+
+        // 获取排名第一的家庭
+        RankingResult topRanking = dataStorage.getRankingResult(communityId, start, period, "total");
+        if (topRanking != null && !topRanking.rankList.isEmpty()) {
+            RankRecord topRecord = topRanking.rankList.get(0);
+            User topUser = dataStorage.getUserByPhone(topRecord.userId);
+            report.topFamilyName = topUser != null ? topUser.familyName : "未知家庭";
+            report.topFamilyEmission = topRecord.value;
+        }
+
+        return report;
+    }
+}
+
+// 新增社区报告数据模型
+class CommunityReport {
+    String communityId;
+    String communityName;
+    String period;
+    Date date;
+    double averageTotal;
+    double averageElectricity;
+    double averageWater;
+    double averageGas;
+    double averageTravel;
+    String topFamilyName;
+    double topFamilyEmission;
+}
+
+// 碳排放计算方法
+class CarbonCalculator {
+    // 生成家庭低碳行为分析报告
+    public FamilyReport generateFamilyReport(String token, Date start, Date end) {
+        User user = userManager.getUserByToken(token);
+        if (user == null) {
+            return null;
+        }
+
+        FamilyReport report = new FamilyReport();
+        report.familyName = user.familyName;
+        report.startDate = start;
+        report.endDate = end;
+
+        // 获取时间段内的碳排放数据
+        List<EmissionResult> results = getHistoricalEmissions(token, start, end);
+        if (results.isEmpty()) {
+            return report;
+        }
+
+        // 计算总排放量和平均值
+        double totalSum = results.stream().mapToDouble(r -> r.total).sum();
+        double days = results.size();
+        report.averageDaily = totalSum / days;
+        report.totalPeriod = totalSum;
+
+        // 计算各项占比
+        double electricitySum = results.stream().mapToDouble(r -> r.electricity).sum();
+        double waterSum = results.stream().mapToDouble(r -> r.water).sum();
+        double gasSum = results.stream().mapToDouble(r -> r.gas).sum();
+        double travelSum = results.stream().mapToDouble(r -> r.travel).sum();
+
+        report.electricityRatio = electricitySum / totalSum;
+        report.waterRatio = waterSum / totalSum;
+        report.gasRatio = gasSum / totalSum;
+        report.travelRatio = travelSum / totalSum;
+
+        // 与社区平均对比
+        String communityId = user.communityId;
+        if (communityId != null) {
+            CommunityAverage avg = dataStorage.getCommunityDailyAverage(communityId, new Date());
+            if (avg != null) {
+                report.communityAverage = avg.total;
+                report.compareToCommunity = (report.averageDaily - avg.total) / avg.total;
+            }
+        }
+
+        // 生成改进建议
+        report.suggestions = generateSuggestions(results);
+
+        return report;
+    }
+
+    // 生成低碳改进建议
+    private List<String> generateSuggestions(List<EmissionResult> results) {
+        List<String> suggestions = new ArrayList<>();
+
+        // 分析各项排放占比，找出主要排放源
+        double electricitySum = results.stream().mapToDouble(r -> r.electricity).sum();
+        double totalSum = results.stream().mapToDouble(r -> r.total).sum();
+        double electricityRatio = electricitySum / totalSum;
+
+        if (electricityRatio > 0.4) {
+            suggestions.add("您的家庭用电碳排放占比较高，建议使用节能电器，减少不必要的用电。");
+        }
+
+        double travelSum = results.stream().mapToDouble(r -> r.travel).sum();
+        double travelRatio = travelSum / totalSum;
+        if (travelRatio > 0.3) {
+            suggestions.add("您的家庭出行碳排放占比较高，建议多使用公共交通或共享单车。");
+        }
+
+        // 检查是否有持续增长趋势
+        if (results.size() >= 7) {
+            List<Double> dailyTotals = results.stream().map(r -> r.total).collect(Collectors.toList());
+            double trend = calculateTrend(dailyTotals);
+            if (trend > 0.5) {
+                suggestions.add("您的家庭碳排放有上升趋势，请注意调整日常行为。");
+            }
+        }
+
+        return suggestions;
+    }
+
+    // 计算碳排放趋势（简单线性回归斜率）
+    private double calculateTrend(List<Double> values) {
+        int n = values.size();
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        for (int i = 0; i < n; i++) {
+            double x = i;
+            double y = values.get(i);
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
+        }
+        double slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        return slope;
+    }
+}
+
+// 家庭报告数据模型
+class FamilyReport {
+    String familyName;
+    Date startDate;
+    Date endDate;
+    double totalPeriod;
+    double averageDaily;
+    double electricityRatio;
+    double waterRatio;
+    double gasRatio;
+    double travelRatio;
+    double communityAverage;
+    double compareToCommunity; // 与社区平均的差异率
+    List<String> suggestions;
+}
+
+// 用户界面补充家庭报告查询功能
+class UserInterface {
+    // 处理家庭报告查询
+    public void handleFamilyReportQuery() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 家庭低碳报告 -----");
+        System.out.print("请输入报告开始日期(yyyy-MM-dd): ");
+        String startStr = scanner.nextLine();
+        System.out.print("请输入报告结束日期(yyyy-MM-dd): ");
+        String endStr = scanner.nextLine();
+
+        try {
+            Date start = new SimpleDateFormat("yyyy-MM-dd").parse(startStr);
+            Date end = new SimpleDateFormat("yyyy-MM-dd").parse(endStr);
+            FamilyReport report = carbonCalculator.generateFamilyReport(currentToken, start, end);
+
+            if (report == null) {
+                System.out.println("无法生成报告，请检查日期范围");
+                return;
+            }
+
+            System.out.println("\n===== " + report.familyName + " 低碳行为报告 =====");
+            System.out.println("报告周期: " + startStr + " 至 " + endStr);
+            System.out.println("总碳排放量: " + String.format("%.2f", report.totalPeriod) + "kg");
+            System.out.println("日均碳排放量: " + String.format("%.2f", report.averageDaily) + "kg");
+            System.out.println("\n排放占比:");
+            System.out.println("用电: " + String.format("%.0f%%", report.electricityRatio * 100));
+            System.out.println("用水: " + String.format("%.0f%%", report.waterRatio * 100));
+            System.out.println("用气: " + String.format("%.0f%%", report.gasRatio * 100));
+            System.out.println("出行: " + String.format("%.0f%%", report.travelRatio * 100));
+
+            if (report.communityAverage > 0) {
+                System.out.println("\n与社区平均对比: " + 
+                    (report.compareToCommunity >= 0 ? "高" : "低") + 
+                    String.format("%.0f%%", Math.abs(report.compareToCommunity) * 100));
+            }
+
+            System.out.println("\n改进建议:");
+            if (report.suggestions.isEmpty()) {
+                System.out.println("您的家庭低碳行为表现良好，继续保持！");
+            } else {
+                for (int i = 0; i < report.suggestions.size(); i++) {
+                    System.out.println((i + 1) + ". " + report.suggestions.get(i));
+                }
+            }
+        } catch (ParseException e) {
+            System.out.println("日期格式");
+        }
+    }
+
+    // 补充主菜单显示，增加报告查询选项
+    public void showMainMenu() {
+        if (currentToken == null || !userManager.validateToken(currentToken)) {
+            System.out.println(“登录");
+            System.out.println(“注册");
+        } else {
+            System.out.println(“手动录入数据");
+            System.out.println(“查询碳排放数据");
+            System.out.println(“查询社区排名");
+            System.out.println(“修改家庭信息");
+            System.out.println(“数据补录");
+            System.out.println(“查看预警记录");
+            System.out.println(“生成家庭低碳报告");
+            System.out.println(“退出登录");
+        }
+        System.out.println(“退出系统");
+        System.out.print("请选择操作: ");
+    }
+
+    // 补充主循环处理，增加新选项的分支
+    public void mainLoop() {
+        Scanner scanner = new Scanner(System.in);
+        while (true) {
+            showMainMenu();
+            int choice = scanner.nextInt();
+            scanner.nextLine();
+            switch (choice) {
+                case 1:
+                    handleLogin();
+                    break;
+                case 2:
+                    handleRegistration();
+                    break;
+                case 3:
+                    handleDataEntry();
+                    break;
+                case 4:
+                    handleDataQuery();
+                    break;
+                case 5:
+                    handleRankingQuery();
+                    break;
+                case 6:
+                    handleInfoModification();
+                    break;
+                case 7:
+                    handleDataReentry();
+                    break;
+                case 8:
+                    handleAlertQuery();
+                    break;
+                case 9:
+                    handleFamilyReportQuery();
+                    break;
+                case 10:
+                    currentToken = null;
+                    System.out.println("已退出登录");
+                    break;
+                case 0:
+                    System.out.println("系统退出中...");
+                    scanner.close();
+                    System.exit(0);
+                    break;
+                default:
+                    System.out.println("无效选择，请重新输入");
+            }
+        }
+    }
+}
+
+// 通讯社区报告推送功能
+class CommunicationModule {
+    // 推送社区报告给所有社区用户
+    public void pushCommunityReport(CommunityReport report) {
+        List<String> userIds = dataStorage.getUserIdsByCommunity(report.communityId);
+        for (String userId : userIds) {
+            WebSocketSession session = userSessions.get(userId);
+            if (session != null && session.isOpen()) {
+                try {
+                    JsonObject json = new JsonObject();
+                    json.addProperty("type", "community_report");
+                    json.add("report", new Gson().toJsonTree(report));
+                    session.sendMessage(json.toString());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+}
+
+// 排名社区报告生成调度
+class RankingManager {
+    // 每周日生成社区周报告
+    private void scheduleCommunityReports() {
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        // 每周日晚上8点执行
+        scheduler.scheduleAtFixedRate(() -> {
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DATE, -1); // 取前一天作为报告日期
+            Date reportDate = cal.getTime();
+            
+            for (String communityId : communityMap.keySet()) {
+                CommunityReport report = generateCommunityReport(communityId, "weekly", reportDate);
+                communicationModule.pushCommunityReport(report);
+            }
+        }, getReportInitialDelay(), 7, TimeUnit.DAYS);
+    }
+
+    // 计算报告生成的初始延迟（到周日晚上8点）
+    private long getReportInitialDelay() {
+        Calendar now = Calendar.getInstance();
+        Calendar target = Calendar.getInstance();
+        target.set(Calendar.DAY_OF_WEEK, Calendar.SUNDAY);
+        target.set(Calendar.HOUR_OF_DAY, 20);
+        target.set(Calendar.MINUTE, 0);
+        target.set(Calendar.SECOND, 0);
+        
+        if (now.after(target)) {
+            target.add(Calendar.WEEK_OF_YEAR, 1);
+        }
+        return target.getTimeInMillis() - now.getTimeInMillis();
+    }
+
+    // 在启动排名服务时同时启动报告调度
+    public void startRankingService() {
+        System.out.println("排名服务启动");
+        // 启动排名计算线程
+        for (int i = 0; i < 2; i++) {
+            rankingPool.submit(() -> processRankingTasks());
+        }
+        // 每天凌晨2点计算前一天的排名
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+        scheduler.scheduleAtFixedRate(() -> {
+            Calendar cal = Calendar.getInstance();
+            cal.add(Calendar.DATE, -1);
+            Date yesterday = cal.getTime();
+            for (String communityId : communityMap.keySet()) {
+                triggerRankingUpdate(communityId, yesterday);
+            }
+        }, getInitialDelay(), 24, TimeUnit.HOURS);
+        
+        // 启动社区报告调度
+        scheduleCommunityReports();
+    }
+}
+// 补充家庭间详细对比功能
+class RankingManager {
+    // 生成家庭间多维度对比数据（支持自时间段）
+    public DetailedComparison generateDetailedComparison(String token, List<String> targetUserIds, Date start, Date end) {
+        User currentUser = userManager.getUserByToken(token);
+        if (currentUser == null) {
+            return null;
+        }
+
+        DetailedComparison comparison = new DetailedComparison();
+        comparison.startDate = start;
+        comparison.endDate = end;
+        comparison.families = new ArrayList<>();
+
+        // 汇总所有参与对比的家庭ID（包含当前用户）
+        List<String> allIds = new ArrayList<>(targetUserIds);
+        allIds.add(currentUser.phone);
+
+        for (String userId : allIds) {
+            FamilyComparisonData data = new FamilyComparisonData();
+            User family = dataStorage.getUserByPhone(userId);
+            data.familyName = family != null ? family.familyName : "未知家庭";
+            data.isCurrentUser = userId.equals(currentUser.phone);
+
+            // 获取时间段内的每日碳排放数据
+            List<EmissionResult> dailyResults = dataStorage.getEmissionResultsByPeriod(userId, start, end);
+            if (dailyResults.isEmpty()) {
+                comparison.families.add(data);
+                continue;
+            }
+
+            // 计算总排放量与日均排放量
+            data.totalEmission = dailyResults.stream().mapToDouble(r -> r.total).sum();
+            data.averageDaily = data.totalEmission / dailyResults.size();
+
+            // 提取各项排放的每日数据（用于趋势对比）
+            data.dailyElectricity = new ArrayList<>();
+            data.dailyWater = new ArrayList<>();
+            data.dailyGas = new ArrayList<>();
+            data.dailyTravel = new ArrayList<>();
+            data.dates = new ArrayList<>();
+
+            for (EmissionResult result : dailyResults) {
+                data.dates.add(result.date);
+                data.dailyElectricity.add(result.electricity);
+                data.dailyWater.add(result.water);
+                data.dailyGas.add(result.gas);
+                data.dailyTravel.add(result.travel);
+            }
+
+            // 计算各项排放占比
+            double electricitySum = data.dailyElectricity.stream().mapToDouble(Double::doubleValue).sum();
+            double waterSum = data.dailyWater.stream().mapToDouble(Double::doubleValue).sum();
+            double gasSum = data.dailyGas.stream().mapToDouble(Double::doubleValue).sum();
+            double travelSum = data.dailyTravel.stream().mapToDouble(Double::doubleValue).sum();
+
+            data.electricityRatio = electricitySum / data.totalEmission;
+            data.waterRatio = waterSum / data.totalEmission;
+            data.gasRatio = gasSum / data.totalEmission;
+            data.travelRatio = travelSum / data.totalEmission;
+
+            comparison.families.add(data);
+        }
+
+        return comparison;
+    }
+}
+
+// 详细对比数据模型
+class DetailedComparison {
+    Date startDate;
+    Date endDate;
+    List<FamilyComparisonData> families;
+}
+
+class FamilyComparisonData {
+    String familyName;
+    boolean isCurrentUser;
+    double totalEmission;
+    double averageDaily;
+    List<Date> dates;
+    List<Double> dailyElectricity;
+    List<Double> dailyWater;
+    List<Double> dailyGas;
+    List<Double> dailyTravel;
+    double electricityRatio;
+    double waterRatio;
+    double gasRatio;
+    double travelRatio;
+}
+
+// 补充用户界面的详细对比功能
+class UserInterface {
+    // 处理家庭间详细对比查询
+    public void handleDetailedComparison() {
+        if (!checkLogin()) {
+            return;
+        }
+
+        System.out.println("\n----- 家庭间详细对比 -----");
+        System.out.print("请输入对比开始日期(yyyy-MM-dd): ");
+        String startStr = scanner.nextLine();
+        System.out.print("请输入对比结束日期(yyyy-MM-dd): ");
+        String endStr = scanner.nextLine();
+
+        System.out.print("请输入需要对比的家庭ID（多个用逗号分隔）: ");
+        String targetIdsStr = scanner.nextLine();
+        List<String> targetIds = Arrays.stream(targetIdsStr.split(","))
+                .map(String::trim)
+                .filter(id -> !id.isEmpty())
+                .collect(Collectors.toList());
+
+        try {
+            Date start = new SimpleDateFormat("yyyy-MM-dd").parse(startStr);
+            Date end = new SimpleDateFormat("yyyy-MM-dd").parse(endStr);
+            DetailedComparison comparison = rankingManager.generateDetailedComparison(currentToken, targetIds, start, end);
+
+            if (comparison == null || comparison.families.isEmpty()) {
+                System.out.println("无对比数据，请检查输入");
+                return;
+            }
+
+            System.out.println("\n===== 家庭低碳行为对比报告 =====");
+            System.out.println("对比周期: " + startStr + " 至 " + endStr);
+            System.out.println("参与家庭: " + comparison.families.size() + " 户");
+
+            // 打印总排放量对比
+            System.out.println("\n总碳排放量对比(kg):");
+            for (FamilyComparisonData data : comparison.families) {
+                String marker = data.isCurrentUser ? "（当前家庭）" : "";
+                System.out.printf("%s%s: %.2f (日均: %.2f)\n",
+                        data.familyName, marker, data.totalEmission, data.averageDaily);
+            }
+
+            // 打印排放占比对比
+            System.out.println("\n排放占比对比:");
+            for (FamilyComparisonData data : comparison.families) {
+                String marker = data.isCurrentUser ? "（当前家庭）" : "";
+                System.out.println(data.familyName + marker + ":");
+                System.out.printf("  用电: %.0f%%  用水: %.0f%%  用气: %.0f%%  出行: %.0f%%\n",
+                        data.electricityRatio * 100,
+                        data.waterRatio * 100,
+                        data.gasRatio * 100,
+                        data.travelRatio * 100);
+            }
+
+        } catch (ParseException e) {
+            System.out.println("日期格式，请使用yyyy-MM-dd");
+        }
+    }
+
+    // 主菜单增加详细对比选项
+    public void showMainMenu() {
+        if (currentToken == null || !userManager.validateToken(currentToken)) {
+            System.out.println(“登录");
+            System.out.println(“注册");
+        } else {
+            System.out.println(“手动录入数据");
+            System.out.println(“查询碳排放数据");
+            System.out.println(“查询社区排名");
+            System.out.println(“修改家庭信息");
+            System.out.println(“数据补录");
+            System.out.println(“查看预警记录");
+            System.out.println(“生成家庭低碳报告");
+            System.out.println(“家庭间详细对比");
+            System.out.println(“退出登录");
+        }
+        System.out.println(“退出系统");
+        System.out.print("请选择操作: ");
+    } 
+    public void mainLoop() {
+        Scanner scanner = new Scanner(System.in);
+        while (true) {
+            showMainMenu();
+            int choice = scanner.nextInt();
+            scanner.nextLine();
+            switch (choice) { 
+                case 10:
+                    handleDetailedComparison();
+                    break; 
+                default:
+                    System.out.println("无效选择，请重新输入");
+            }
+        }
+    }
+}
